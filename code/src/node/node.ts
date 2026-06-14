@@ -1,7 +1,8 @@
 // An Aleph node: a capability provider. It publishes a Manifest and answers an
 // INVOKE with a signed RECEIPT — running the inbound Envelope through the
 // receive-guard (signature + replay + skew + version), verifying the Grant,
-// and validating input against the capability schema, before acting.
+// validating input against the capability schema, and (for priced capabilities)
+// settling payment atomically with delivery, before/as it acts.
 
 import http from "node:http";
 import type { ServerResponse } from "node:http";
@@ -13,6 +14,7 @@ import { hashObject } from "../core/hash.ts";
 import { validateSchema, type JsonSchema } from "../core/schema.ts";
 import { err, type AlephError } from "../core/errors.ts";
 import type { Manifest } from "../core/manifest.ts";
+import type { SettlementRail, SettlementRecord } from "../settle/rail.ts";
 import { readJson, sendJson } from "../transport/http.ts";
 
 type CapabilitySpec = {
@@ -20,12 +22,14 @@ type CapabilitySpec = {
   requiredGrant?: boolean;
   risk?: "low" | "medium" | "high";
   schema?: JsonSchema;
+  priceEur?: number;
 };
 
 export type NodeOptions = {
   identity: Identity;
   port: number;
   capabilities: Record<string, CapabilitySpec>;
+  rail?: SettlementRail;
 };
 
 export function createNode(opts: NodeOptions) {
@@ -36,14 +40,12 @@ export function createNode(opts: NodeOptions) {
   const manifest: Manifest = {
     v: "aleph/0.1",
     identity: identity.did,
-    conformance: "L1",
+    conformance: opts.rail ? "L3" : "L1",
     capabilities: Object.keys(opts.capabilities).map((key) => ({
       key,
       risk: opts.capabilities[key].risk ?? "low",
-      cost: { unit: "stable", value: "0", model: "per-call" },
-      schema: opts.capabilities[key].schema
-        ? { input: opts.capabilities[key].schema }
-        : undefined,
+      cost: { unit: "stable", value: String(opts.capabilities[key].priceEur ?? 0), model: "per-call" },
+      schema: opts.capabilities[key].schema ? { input: opts.capabilities[key].schema } : undefined,
     })),
     terms: {
       required_grants: Object.entries(opts.capabilities)
@@ -58,6 +60,7 @@ export function createNode(opts: NodeOptions) {
     invoke: Envelope,
     outcome: "success" | "rejected" | "failure",
     result: Record<string, unknown>,
+    settlement?: SettlementRecord,
   ): void {
     const receipt = createEnvelope(
       {
@@ -69,8 +72,9 @@ export function createNode(opts: NodeOptions) {
           capability: invoke.body.capability,
           outcome,
           result,
-          settle_ref: null,
-          prev: [],
+          settle_ref: settlement ? hashObject(settlement) : null,
+          settlement: settlement ?? null,
+          prev: (invoke.body.prev as string[] | undefined) ?? [],
           issued_by: identity.did,
         },
       },
@@ -115,9 +119,31 @@ export function createNode(opts: NodeOptions) {
         const sv = validateSchema(cap.schema, input);
         if (!sv.ok) return reject(res, env, err("SCHEMA_INVALID", sv.reason ?? "input invalid"));
 
-        // 5. act
-        const { output } = cap.handler(input);
-        return sendReceipt(res, env, "success", output);
+        // 5. payment escrow (for priced capabilities)
+        const price = cap.priceEur ?? 0;
+        let escrowId: string | undefined;
+        if (price > 0) {
+          if (!opts.rail) return reject(res, env, err("INTERNAL", "node priced but has no rail"));
+          const payment = env.body.payment as { escrow?: string } | undefined;
+          if (!payment?.escrow) return reject(res, env, err("PAYMENT_REQUIRED", "payment escrow required"));
+          const e = opts.rail.get(payment.escrow);
+          if (!e || e.status !== "locked") return reject(res, env, err("SETTLE_INVALID", "escrow missing or not locked"));
+          if (e.payer !== env.from || e.payee !== identity.did) {
+            return reject(res, env, err("SETTLE_INVALID", "escrow parties mismatch"));
+          }
+          if (e.amount < price) return reject(res, env, err("INSUFFICIENT_FUNDS", "escrow below price"));
+          escrowId = payment.escrow;
+        }
+
+        // 6. act — settle atomically with delivery; refund on failure
+        try {
+          const { output } = cap.handler(input);
+          const settlement = escrowId && opts.rail ? opts.rail.release(escrowId) : undefined;
+          return sendReceipt(res, env, "success", output, settlement);
+        } catch (e) {
+          const refund = escrowId && opts.rail ? opts.rail.refund(escrowId) : undefined;
+          return sendReceipt(res, env, "failure", { error: err("INTERNAL", (e as Error).message) }, refund);
+        }
       }
       sendJson(res, 404, { error: err("WRONG_TYPE", "not found") });
     } catch (e) {
