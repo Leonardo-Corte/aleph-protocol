@@ -115,4 +115,4 @@ The foundational documents are complete, and a **running reference implementatio
 
 The honestly-open frontier (see the paper, §8): a real on-chain settlement/payment rail to replace the in-memory one, the fiat/oracle reserve boundary, and persistent/federated registries at scale. It is deliberately imperfect and expected to change: **when reality contradicts a page, the page changes.** Issues, critiques, and precise attacks are worth more than agreement — a convergent objection from an opposite premise is how this gets stronger.
 
-*License: TBD. Lineage: the agentic-web direction is developed in dialogue with the Operative Ecosystem (ESO) corpus.*
+*License: code under [Apache-2.0](LICENSE); spec & docs under [CC-BY-4.0](LICENSE-docs). Key architecture decisions are recorded in [DECISIONS.md](DECISIONS.md). Lineage: the agentic-web direction is developed in dialogue with the Operative Ecosystem (ESO) corpus.*

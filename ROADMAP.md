@@ -71,10 +71,10 @@ Keep `did:key` (already built). Add:
 - **License:** the code is MIT in `package.json` but "TBD" in the README. **Decide now.** Recommendation: **Apache-2.0** for the implementation (patent grant matters for a protocol others build on) and **CC-BY-4.0** for the spec/papers. Replace every "TBD".
 - **Governance:** who can change the *thin waist*? Recommendation: an **AIP process** ("Aleph Improvement Proposal", modeled on RFCs/EIPs) — numbered proposals, public discussion, a defined acceptance bar. Drafted in Section 12; decided in principle now.
 
-**Acceptance criteria for Section 0.**
-- [ ] A `DECISIONS.md` exists recording: launch posture (A), substrate (on-chain EVM L2 testnet), identity methods (`did:key`/`did:web`/`did:pkh`), license (Apache-2.0 + CC-BY-4.0), governance (AIP).
-- [ ] Every "TBD" in the repo is replaced with the chosen license.
-- [ ] These choices are committed and will not be relitigated without a written reason.
+**Acceptance criteria for Section 0.** ✅ **DONE (2026-06-14)**
+- [x] A `DECISIONS.md` exists recording: launch posture (A), substrate (on-chain EVM L2 testnet), identity methods (`did:key`/`did:web`/`did:pkh`), license (Apache-2.0 + CC-BY-4.0), governance (AIP).
+- [x] Every "TBD" in the repo is replaced with the chosen license.
+- [x] These choices are committed and will not be relitigated without a written reason.
 
 **Risks.** The biggest risk here is *not deciding* and letting ambiguity propagate. The second is over-engineering for mainnet before the testnet has taught you anything.
 
