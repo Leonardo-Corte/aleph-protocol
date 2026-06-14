@@ -1,13 +1,17 @@
 // An Aleph node: a capability provider. It publishes a Manifest and answers an
-// INVOKE with a signed RECEIPT — verifying the Grant before acting. This is the
-// L0/L1 floor: "receive INVOKE, return RECEIPT".
+// INVOKE with a signed RECEIPT — running the inbound Envelope through the
+// receive-guard (signature + replay + skew + version), verifying the Grant,
+// and validating input against the capability schema, before acting.
 
 import http from "node:http";
 import type { ServerResponse } from "node:http";
 import type { Identity } from "../core/identity.ts";
-import { createEnvelope, verifyEnvelope, type Envelope } from "../core/envelope.ts";
+import { createEnvelope, type Envelope } from "../core/envelope.ts";
+import { NonceStore, verifyReceived } from "../core/replay.ts";
 import { verifyGrant, type Grant } from "../core/grant.ts";
 import { hashObject } from "../core/hash.ts";
+import { validateSchema, type JsonSchema } from "../core/schema.ts";
+import { err, type AlephError } from "../core/errors.ts";
 import type { Manifest } from "../core/manifest.ts";
 import { readJson, sendJson } from "../transport/http.ts";
 
@@ -15,6 +19,7 @@ type CapabilitySpec = {
   handler: (input: Record<string, unknown>) => { output: Record<string, unknown> };
   requiredGrant?: boolean;
   risk?: "low" | "medium" | "high";
+  schema?: JsonSchema;
 };
 
 export type NodeOptions = {
@@ -26,6 +31,7 @@ export type NodeOptions = {
 export function createNode(opts: NodeOptions) {
   const { identity, port } = opts;
   const baseUrl = `http://127.0.0.1:${port}`;
+  const nonces = new NonceStore();
 
   const manifest: Manifest = {
     v: "aleph/0.1",
@@ -35,6 +41,9 @@ export function createNode(opts: NodeOptions) {
       key,
       risk: opts.capabilities[key].risk ?? "low",
       cost: { unit: "stable", value: "0", model: "per-call" },
+      schema: opts.capabilities[key].schema
+        ? { input: opts.capabilities[key].schema }
+        : undefined,
     })),
     terms: {
       required_grants: Object.entries(opts.capabilities)
@@ -70,6 +79,9 @@ export function createNode(opts: NodeOptions) {
     sendJson(res, 200, receipt);
   }
 
+  const reject = (res: ServerResponse, invoke: Envelope, e: AlephError) =>
+    sendReceipt(res, invoke, "rejected", { error: e });
+
   const server = http.createServer(async (req, res) => {
     try {
       if (req.method === "GET" && req.url === "/manifest") {
@@ -77,28 +89,39 @@ export function createNode(opts: NodeOptions) {
       }
       if (req.method === "POST" && req.url === "/aleph") {
         const env = (await readJson(req)) as unknown as Envelope;
-        const v = verifyEnvelope(env);
-        if (!v.ok) return sendJson(res, 400, { error: "envelope: " + v.reason });
-        if (env.type !== "INVOKE") return sendJson(res, 400, { error: "node only accepts INVOKE" });
 
-        const capName = env.body.capability as string;
-        const cap = opts.capabilities[capName];
-        if (!cap) return sendReceipt(res, env, "rejected", { error: "unknown capability" });
-
-        // Bounded-authority gate: verify the Grant before acting.
-        if (cap.requiredGrant) {
-          const grant = env.body.grant as Grant | undefined;
-          if (!grant) return sendReceipt(res, env, "rejected", { error: "grant required" });
-          const g = verifyGrant(grant, { grantee: env.from, capability: capName });
-          if (!g.ok) return sendReceipt(res, env, "rejected", { error: "grant: " + g.reason });
+        // 1. waist: signature + version + skew + replay
+        const v = verifyReceived(env, { nonceStore: nonces });
+        if (!v.ok) return sendJson(res, 400, { error: err(v.code!, v.reason!) });
+        if (env.type !== "INVOKE") {
+          return sendJson(res, 400, { error: err("WRONG_TYPE", "node only accepts INVOKE") });
         }
 
-        const { output } = cap.handler((env.body.input ?? {}) as Record<string, unknown>);
+        // 2. capability exists
+        const capName = env.body.capability as string;
+        const cap = opts.capabilities[capName];
+        if (!cap) return reject(res, env, err("UNKNOWN_CAPABILITY", capName));
+
+        // 3. bounded-authority gate
+        if (cap.requiredGrant) {
+          const grant = env.body.grant as Grant | undefined;
+          if (!grant) return reject(res, env, err("GRANT_REQUIRED", "this capability requires a grant"));
+          const g = verifyGrant(grant, { grantee: env.from, capability: capName });
+          if (!g.ok) return reject(res, env, err("GRANT_INVALID", g.reason ?? "grant invalid"));
+        }
+
+        // 4. typed input
+        const input = (env.body.input ?? {}) as Record<string, unknown>;
+        const sv = validateSchema(cap.schema, input);
+        if (!sv.ok) return reject(res, env, err("SCHEMA_INVALID", sv.reason ?? "input invalid"));
+
+        // 5. act
+        const { output } = cap.handler(input);
         return sendReceipt(res, env, "success", output);
       }
-      sendJson(res, 404, { error: "not found" });
+      sendJson(res, 404, { error: err("WRONG_TYPE", "not found") });
     } catch (e) {
-      sendJson(res, 500, { error: (e as Error).message });
+      sendJson(res, 500, { error: err("INTERNAL", (e as Error).message) });
     }
   });
 
