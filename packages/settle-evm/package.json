@@ -39,6 +39,7 @@
     "lint": "eslint src",
     "test": "true",
     "test:coverage": "true",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "gen:abi": "node scripts/gen-abi.mjs"
   }
 }

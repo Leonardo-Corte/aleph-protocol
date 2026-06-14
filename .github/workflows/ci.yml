@@ -113,10 +113,31 @@ jobs:
       - name: Postgres store contract
         run: node --test "e2e/test/store-postgres.test.ts"
 
-  # Placeholder for future Solidity (Foundry) tests — Section 4 of the roadmap.
-  # contracts:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v5
-  #     - uses: foundry-rs/foundry-toolchain@v1
-  #     - run: forge test -vvv
+  contracts:
+    name: contracts (foundry) + on-chain rail
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Install contract deps
+        working-directory: contracts
+        run: forge install OpenZeppelin/openzeppelin-contracts@v5.1.0 --no-git && forge install foundry-rs/forge-std --no-git
+      - name: Forge build + test
+        working-directory: contracts
+        run: forge test -vvv
+      - name: Forge coverage (AlephEscrow)
+        working-directory: contracts
+        run: forge coverage --no-match-coverage 'test/|lib/' --report summary
+      # The on-chain rail end-to-end against anvil (foundry-toolchain provides it).
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - name: On-chain settlement integration (anvil)
+        run: |
+          mkdir -p "$HOME/.foundry/bin"
+          ln -sf "$(which anvil)" "$HOME/.foundry/bin/anvil"
+          node --test "e2e/test/settle-evm.test.ts"
