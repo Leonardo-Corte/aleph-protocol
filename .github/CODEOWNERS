@@ -1,0 +1,8 @@
+# Default owner for everything.
+*                       @Leonardo-Corte
+
+# The thin waist and security-critical surfaces get extra scrutiny.
+/packages/core/         @Leonardo-Corte
+/spec/                  @Leonardo-Corte
+/SECURITY.md            @Leonardo-Corte
+/.github/workflows/     @Leonardo-Corte
