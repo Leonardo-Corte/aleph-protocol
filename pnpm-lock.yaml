@@ -130,6 +130,9 @@ importers:
       '@aleph/core':
         specifier: workspace:*
         version: link:../core
+      '@aleph/store':
+        specifier: workspace:*
+        version: link:../store
       '@aleph/transport':
         specifier: workspace:*
         version: link:../transport
@@ -139,6 +142,9 @@ importers:
       '@aleph/core':
         specifier: workspace:*
         version: link:../core
+      '@aleph/store':
+        specifier: workspace:*
+        version: link:../store
       '@aleph/transport':
         specifier: workspace:*
         version: link:../transport

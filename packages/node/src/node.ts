@@ -6,7 +6,7 @@
 
 import http from "node:http";
 import type { ServerResponse } from "node:http";
-import type { Identity } from "@aleph/core";
+import type { Identity, NonceChecker } from "@aleph/core";
 import type { Manifest } from "@aleph/core";
 import type { SettlementRail, SettlementRecord } from "@aleph/core";
 import { createEnvelope, type Envelope } from "@aleph/core";
@@ -16,6 +16,7 @@ import { hashObject } from "@aleph/core";
 import { validateSchema, type JsonSchema } from "@aleph/core";
 import { err, type AlephError } from "@aleph/core";
 import { verifyAttestation, type Attestation } from "@aleph/core";
+import { InMemoryReputationStore, type ReputationStore, type SettlementStore } from "@aleph/store";
 import { readJson, sendJson, asyncHandler } from "@aleph/transport";
 
 interface CapabilitySpec {
@@ -31,17 +32,23 @@ export interface NodeOptions {
   port: number;
   capabilities: Record<string, CapabilitySpec>;
   rail?: SettlementRail;
+  // Storage is pluggable: pass these (SQLite/Postgres) to persist a node's
+  // reputation, nonces, and settlement history; all default to in-memory.
+  reputationStore?: ReputationStore;
+  nonceStore?: NonceChecker;
+  settlementStore?: SettlementStore;
 }
 
 export function createNode(opts: NodeOptions) {
   const { identity, port } = opts;
   const baseUrl = `http://127.0.0.1:${port}`;
-  const nonces = new NonceStore();
+  const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
 
-  // The node holds the verified attestations written about it. Trust is
-  // computed by the consumer from these raw facts — the node only stores and
-  // serves them; it cannot mint its own score.
-  const reputation: Attestation[] = [];
+  // The node's reputation store holds the verified attestations written about
+  // it. Trust is computed by the consumer from these raw facts — the node only
+  // stores and serves them; it cannot mint its own score. Defaults to in-memory.
+  const reputation: ReputationStore = opts.reputationStore ?? new InMemoryReputationStore();
+  const settlements: SettlementStore | undefined = opts.settlementStore;
 
   const manifest: Manifest = {
     v: "aleph/0.1",
@@ -103,7 +110,8 @@ export function createNode(opts: NodeOptions) {
         }
         // Serve the raw attestation set (the consumer computes its own trust).
         if (req.method === "GET" && req.url === "/reputation") {
-          sendJson(res, 200, { subject: identity.did, attestations: reputation });
+          const attestations = await reputation.getAttestations(identity.did);
+          sendJson(res, 200, { subject: identity.did, attestations });
           return;
         }
         // Receive an attestation written about this node; store only if it is
@@ -119,10 +127,9 @@ export function createNode(opts: NodeOptions) {
             sendJson(res, 400, { error: err("ATTEST_INVALID", "not about this node") });
             return;
           }
-          // One settlement can back at most one stored attestation.
-          if (!reputation.some((a) => a.settlement.escrowId === att.settlement.escrowId)) {
-            reputation.push(att);
-          }
+          // The store enforces "one settlement, one attestation" (anti-Sybil)
+          // at the database level.
+          await reputation.addAttestation(att);
           sendJson(res, 200, { ok: true });
           return;
         }
@@ -130,7 +137,7 @@ export function createNode(opts: NodeOptions) {
           const env = (await readJson(req)) as unknown as Envelope;
 
           // 1. waist: signature + version + skew + replay
-          const v = verifyReceived(env, { nonceStore: nonces });
+          const v = await verifyReceived(env, { nonceStore: nonces });
           if (!v.ok) {
             sendJson(res, 400, { error: err(v.code!, v.reason!) });
             return;
@@ -199,14 +206,18 @@ export function createNode(opts: NodeOptions) {
             escrowId = payment.escrow;
           }
 
-          // 6. act — settle atomically with delivery; refund on failure
+          // 6. act — settle atomically with delivery; refund on failure.
+          // Each produced settlement is recorded to the durable settlement
+          // history (forward-compatible with the on-chain rail).
           try {
             const { output } = cap.handler(input);
             const settlement = escrowId && opts.rail ? opts.rail.release(escrowId) : undefined;
+            if (settlement) await settlements?.record(settlement);
             sendReceipt(res, env, "success", output, settlement);
             return;
           } catch (e) {
             const refund = escrowId && opts.rail ? opts.rail.refund(escrowId) : undefined;
+            if (refund) await settlements?.record(refund);
             sendReceipt(res, env, "failure", { error: err("INTERNAL", (e as Error).message) }, refund);
             return;
           }

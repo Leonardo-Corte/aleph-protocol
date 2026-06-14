@@ -31,7 +31,8 @@
   },
   "dependencies": {
     "@aleph/core": "workspace:*",
-    "@aleph/transport": "workspace:*"
+    "@aleph/transport": "workspace:*",
+    "@aleph/store": "workspace:*"
   },
   "scripts": {
     "build": "tsup",

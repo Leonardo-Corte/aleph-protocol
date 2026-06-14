@@ -27,36 +27,36 @@ function signEnvelope(id: Identity, partial: Partial<Envelope>): Envelope {
   return { ...base, sig };
 }
 
-test("verifyReceived accepts a fresh, valid envelope", () => {
+test("verifyReceived accepts a fresh, valid envelope", async () => {
   const id = generateIdentity();
   const ns = new NonceStore();
-  assert.equal(verifyReceived(signEnvelope(id, {}), { nonceStore: ns }).ok, true);
+  assert.equal((await verifyReceived(signEnvelope(id, {}), { nonceStore: ns })).ok, true);
 });
 
-test("verifyReceived rejects a replayed nonce", () => {
+test("verifyReceived rejects a replayed nonce", async () => {
   const id = generateIdentity();
   const ns = new NonceStore();
   const env = signEnvelope(id, {});
-  assert.equal(verifyReceived(env, { nonceStore: ns }).ok, true);
-  const second = verifyReceived(env, { nonceStore: ns });
+  assert.equal((await verifyReceived(env, { nonceStore: ns })).ok, true);
+  const second = await verifyReceived(env, { nonceStore: ns });
   assert.equal(second.ok, false);
   assert.equal(second.code, "REPLAY");
 });
 
-test("verifyReceived rejects a stale timestamp (clock skew)", () => {
+test("verifyReceived rejects a stale timestamp (clock skew)", async () => {
   const id = generateIdentity();
   const ns = new NonceStore();
   const env = signEnvelope(id, { ts: Date.now() - 10 * 60 * 1000 });
-  const r = verifyReceived(env, { nonceStore: ns });
+  const r = await verifyReceived(env, { nonceStore: ns });
   assert.equal(r.ok, false);
   assert.equal(r.code, "CLOCK_SKEW");
 });
 
-test("verifyReceived rejects an unsupported major version", () => {
+test("verifyReceived rejects an unsupported major version", async () => {
   const id = generateIdentity();
   const ns = new NonceStore();
   const env = signEnvelope(id, { v: "aleph/9.0" });
-  const r = verifyReceived(env, { nonceStore: ns });
+  const r = await verifyReceived(env, { nonceStore: ns });
   assert.equal(r.ok, false);
   assert.equal(r.code, "VERSION_UNSUPPORTED");
 });

@@ -8,9 +8,18 @@ import type { AlephErrorCode } from "./errors";
 
 const OUR_MAJOR = (PROTOCOL_VERSION.split("/")[1] ?? "").split(".")[0]; // "0"
 
-// Remembers (from, nonce) pairs within a sliding window so a captured Envelope
-// cannot be replayed.
-export class NonceStore {
+// The minimal contract verifyReceived needs from a nonce store. Implemented
+// synchronously by the in-memory NonceStore below, and asynchronously by the
+// persistent stores in @aleph/store — so replay protection can survive a
+// restart without changing this code.
+export interface NonceChecker {
+  // Record (from, nonce); return false if it was already seen (a replay).
+  checkAndRecord(from: string, nonce: string, ts: number): boolean | Promise<boolean>;
+}
+
+// In-memory nonce store: remembers (from, nonce) pairs within a sliding window
+// so a captured Envelope cannot be replayed. The default; forgotten on restart.
+export class NonceStore implements NonceChecker {
   private seen: Map<string, number>;
   private windowMs: number;
 
@@ -33,10 +42,10 @@ export class NonceStore {
   }
 }
 
-export function verifyReceived(
+export async function verifyReceived(
   env: Envelope,
-  opts: { nonceStore: NonceStore; skewMs?: number },
-): { ok: boolean; code?: AlephErrorCode; reason?: string } {
+  opts: { nonceStore: NonceChecker; skewMs?: number },
+): Promise<{ ok: boolean; code?: AlephErrorCode; reason?: string }> {
   const sig = verifyEnvelope(env);
   if (!sig.ok) return { ok: false, code: "ENVELOPE_INVALID", reason: sig.reason };
 
@@ -50,7 +59,9 @@ export function verifyReceived(
     return { ok: false, code: "CLOCK_SKEW", reason: "timestamp outside skew window" };
   }
 
-  if (typeof env.nonce !== "string" || !opts.nonceStore.checkAndRecord(env.from, env.nonce, env.ts)) {
+  const fresh =
+    typeof env.nonce === "string" && (await opts.nonceStore.checkAndRecord(env.from, env.nonce, env.ts));
+  if (!fresh) {
     return { ok: false, code: "REPLAY", reason: "nonce missing or already seen" };
   }
 

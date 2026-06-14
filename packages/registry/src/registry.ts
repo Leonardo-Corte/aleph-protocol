@@ -5,44 +5,28 @@
 // not use. Inbound RESOLVE Envelopes pass through the receive-guard.
 
 import http from "node:http";
-import type { Envelope } from "@aleph/core";
+import type { Envelope, NonceChecker } from "@aleph/core";
 import { NonceStore, verifyReceived } from "@aleph/core";
 import { validateManifest, type Manifest } from "@aleph/core";
 import { err } from "@aleph/core";
+import { InMemoryRegistryStore, type RegistryStore } from "@aleph/store";
 import { readJson, sendJson, asyncHandler } from "@aleph/transport";
-
-interface Pointer {
-  did: string;
-  manifest: string;
-  summary: string;
-  reputation?: string;
-}
 
 // Federated registries gossip registrations to peers, so a RESOLVE to any
 // registry yields a comparable view. No registry is authoritative — discovery
 // is a service to the network, not the network.
-export function createRegistry(opts: { port: number; peers?: string[] }) {
-  const byCapability = new Map<string, Pointer[]>();
-  const nonces = new NonceStore();
+//
+// Storage is pluggable: pass `store` (SQLite/Postgres) and `nonceStore` to
+// persist; both default to in-memory (behavior unchanged).
+export function createRegistry(opts: {
+  port: number;
+  peers?: string[];
+  store?: RegistryStore;
+  nonceStore?: NonceChecker;
+}) {
+  const store: RegistryStore = opts.store ?? new InMemoryRegistryStore();
+  const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
   const peers = opts.peers ?? [];
-
-  function index(manifest: Manifest, manifestUrl: string): boolean {
-    let added = false;
-    for (const cap of manifest.capabilities) {
-      const list = byCapability.get(cap.key) ?? [];
-      if (!list.some((p) => p.did === manifest.identity)) {
-        list.push({
-          did: manifest.identity,
-          manifest: manifestUrl,
-          summary: `${cap.key} · risk:${cap.risk ?? "low"}`,
-          reputation: manifest.reputation,
-        });
-        added = true;
-      }
-      byCapability.set(cap.key, list);
-    }
-    return added;
-  }
 
   async function gossip(manifest: Manifest, manifestUrl: string): Promise<void> {
     await Promise.allSettled(
@@ -70,7 +54,7 @@ export function createRegistry(opts: { port: number; peers?: string[] }) {
             sendJson(res, 400, { error: err("ENVELOPE_INVALID", v.reason ?? "bad manifest") });
             return;
           }
-          const added = index(manifest, manifestUrl);
+          const added = await store.upsertNode(manifest, manifestUrl);
           // Propagate first-seen registrations to peers (not re-propagating gossip).
           if (added && !body.gossiped) await gossip(manifest, manifestUrl);
           sendJson(res, 200, { ok: true });
@@ -80,7 +64,7 @@ export function createRegistry(opts: { port: number; peers?: string[] }) {
         // RESOLVE: find providers of a capability.
         if (req.method === "POST" && req.url === "/aleph") {
           const env = (await readJson(req)) as unknown as Envelope;
-          const v = verifyReceived(env, { nonceStore: nonces });
+          const v = await verifyReceived(env, { nonceStore: nonces });
           if (!v.ok) {
             sendJson(res, 400, { error: err(v.code!, v.reason!) });
             return;
@@ -90,7 +74,7 @@ export function createRegistry(opts: { port: number; peers?: string[] }) {
             return;
           }
           const capability = env.body.capability as string;
-          const results = byCapability.get(capability) ?? [];
+          const results = await store.resolveByCapability(capability, 50);
           sendJson(res, 200, { results });
           return;
         }
