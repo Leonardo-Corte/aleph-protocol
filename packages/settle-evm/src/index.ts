@@ -1,0 +1,4 @@
+// @aleph/settle-evm — the on-chain settlement rail (AlephEscrow via viem).
+export { EvmSettlementRail, escrowIdFor, type EvmSettlementRecord, type EvmRailConfig } from "./rail";
+export { deployEscrow } from "./deploy";
+export { alephEscrowAbi, alephEscrowBytecode } from "./abi";

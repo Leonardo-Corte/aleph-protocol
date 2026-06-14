@@ -20,6 +20,8 @@
     "@aleph/client": "workspace:*",
     "@aleph/mcp": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@aleph/store": "workspace:*"
+    "@aleph/store": "workspace:*",
+    "@aleph/settle-evm": "workspace:*",
+    "viem": "^2.21.0"
   }
 }
