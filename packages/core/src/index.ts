@@ -10,6 +10,8 @@ export * from "./replay";
 export * from "./schema";
 export * from "./canonical";
 export * from "./signing";
+export * from "./keystore";
+export * from "./keyring";
 export * from "./hash";
 export * from "./errors";
 export * from "./resolver";
