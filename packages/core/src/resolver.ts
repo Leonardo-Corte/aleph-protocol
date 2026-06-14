@@ -1,8 +1,12 @@
 // DID resolution behind a pluggable interface. did:key is resolved locally
 // (the DID *is* the key); did:web is resolved by fetching the domain's
-// /.well-known/did.json. New methods can be registered without touching
-// callers. Envelope verification stays on the synchronous did:key fast path;
-// this resolver is for identities that live behind a domain.
+// /.well-known/did.json over HTTPS, with a TTL cache and a fetch timeout. New
+// methods register without touching callers. Envelope verification stays on the
+// synchronous did:key fast path; this resolver is for domain-bound identities.
+//
+// did:pkh (chain-account identities) is added in ROADMAP §4 alongside the
+// on-chain settlement rail, where Ethereum signature recovery is handled by the
+// chain tooling rather than re-implemented here.
 
 import { createPublicKey, type KeyObject } from "node:crypto";
 import { publicKeyFromDid } from "./identity";
@@ -26,19 +30,38 @@ export async function resolveDid(did: string): Promise<KeyObject> {
 // did:key — local, synchronous under the hood (wrapped to satisfy the async interface).
 registerDidMethod("key", (did) => Promise.resolve(publicKeyFromDid(did)));
 
-// did:web — did:web:example.com[:path] -> https://example.com[/path]/did.json
-// (root form uses /.well-known/did.json), per the did:web method.
-registerDidMethod("web", async (did) => {
+// --- did:web ---
+
+const DID_WEB_TTL_MS = 300_000; // cache resolved documents for 5 minutes
+const DID_WEB_TIMEOUT_MS = 5_000;
+const cache = new Map<string, { key: KeyObject; expires: number }>();
+
+// did:web:example.com[:path] -> https://example.com[/path]/did.json
+// (root form uses /.well-known/did.json), per the did:web method spec.
+export function didWebUrl(did: string): string {
   const rest = did.slice("did:web:".length);
   const parts = rest.split(":").map(decodeURIComponent);
   const host = parts[0];
+  if (!host) throw new Error("malformed did:web: " + did);
   const path = parts.slice(1);
-  const url =
-    path.length === 0 ? `https://${host}/.well-known/did.json` : `https://${host}/${path.join("/")}/did.json`;
-  const res = await fetch(url);
+  return path.length === 0
+    ? `https://${host}/.well-known/did.json`
+    : `https://${host}/${path.join("/")}/did.json`;
+}
+
+registerDidMethod("web", async (did) => {
+  const cached = cache.get(did);
+  if (cached && cached.expires > Date.now()) return cached.key;
+
+  const url = didWebUrl(did);
+  if (!url.startsWith("https://")) throw new Error("did:web must resolve over HTTPS");
+
+  const res = await fetch(url, { signal: AbortSignal.timeout(DID_WEB_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`did:web fetch failed (${res.status}) for ${url}`);
   const doc = (await res.json()) as DidDocument;
-  return publicKeyFromVerificationMethod(doc);
+  const key = publicKeyFromVerificationMethod(doc);
+  cache.set(did, { key, expires: Date.now() + DID_WEB_TTL_MS });
+  return key;
 });
 
 export interface DidDocument {
