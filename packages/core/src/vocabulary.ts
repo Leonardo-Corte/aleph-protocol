@@ -4,11 +4,11 @@
 // rules, namespacing, validation, and a seed set. New keys are proposed and
 // adopted by consensus (an RFC-like process); this module is where they live.
 
-export type VocabularyEntry = {
+export interface VocabularyEntry {
   key: string;
   description: string;
   status: "seed" | "proposed" | "stable";
-};
+}
 
 // A key is a dotted, lowercase, hierarchical identifier: segment(.segment)+
 // where each segment is [a-z][a-z0-9-]*. At least two segments (namespace.name).

@@ -3,15 +3,15 @@
 // reputation pointer, and endpoints. Here we define the type and a structural
 // validator (the minimal "is this a node?" check).
 
-export type Capability = {
+export interface Capability {
   key: string;
   schema?: { input?: unknown; output?: unknown };
   cost?: { unit: string; value: string; model: string };
   risk?: "low" | "medium" | "high";
   reversibility?: string;
-};
+}
 
-export type Manifest = {
+export interface Manifest {
   v: string;
   identity: string;
   conformance: "L0" | "L1" | "L2" | "L3";
@@ -20,7 +20,7 @@ export type Manifest = {
   reputation?: string;
   endpoint: string[];
   ext?: Record<string, unknown>;
-};
+}
 
 export function validateManifest(m: unknown): { ok: boolean; reason?: string } {
   if (!m || typeof m !== "object") return { ok: false, reason: "manifest is not an object" };

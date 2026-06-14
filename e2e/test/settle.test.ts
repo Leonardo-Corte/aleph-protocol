@@ -1,12 +1,12 @@
 // Phase B: the PAY verb. Escrow funds, settle atomically with delivery, refund
 // on failure, and reject when funds are short.
 
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
+import { invoke } from "@aleph/client";
 import { generateIdentity } from "@aleph/core";
 import { SettlementRail, verifySettlement } from "@aleph/core";
 import { createNode } from "@aleph/node";
-import { invoke } from "@aleph/client";
 
 const addSchema = {
   type: "object" as const,
@@ -46,8 +46,8 @@ test("priced capability: pay-on-delivery settles funds and yields a verified set
     assert.equal(outcome, "success");
     assert.deepEqual(result, { sum: 5 });
     assert.ok(settlement, "receipt carries a settlement");
-    assert.equal(settlement!.status, "released");
-    assert.equal(verifySettlement(settlement!).ok, true);
+    assert.equal(settlement.status, "released");
+    assert.equal(verifySettlement(settlement).ok, true);
     assert.equal(rail.balanceOf(agent.did), 95);
     assert.equal(rail.balanceOf(nodeId.did), 5);
   } finally {
@@ -64,12 +64,26 @@ test("insufficient funds: escrow lock fails before invoking", async () => {
     identity: nodeId,
     port: 4301,
     rail,
-    capabilities: { "math.add": { priceEur: 5, schema: addSchema, handler: (i) => ({ output: { sum: (i.a as number) + (i.b as number) } }) } },
+    capabilities: {
+      "math.add": {
+        priceEur: 5,
+        schema: addSchema,
+        handler: (i) => ({ output: { sum: (i.a as number) + (i.b as number) } }),
+      },
+    },
   });
   await node.listen();
   try {
     await assert.rejects(
-      invoke({ nodeDid: nodeId.did, endpoint: node.url + "/aleph", capability: "math.add", input: { a: 1, b: 1 }, agent, rail, payEur: 5 }),
+      invoke({
+        nodeDid: nodeId.did,
+        endpoint: node.url + "/aleph",
+        capability: "math.add",
+        input: { a: 1, b: 1 },
+        agent,
+        rail,
+        payEur: 5,
+      }),
       /payment lock failed/,
     );
   } finally {
@@ -88,7 +102,7 @@ test("failure refunds the escrow (no charge on a failed delivery)", async () => 
     port: 4302,
     rail,
     capabilities: {
-      "explode": {
+      explode: {
         priceEur: 5,
         handler: () => {
           throw new Error("boom");

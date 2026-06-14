@@ -5,15 +5,33 @@
   "type": "module",
   "license": "Apache-2.0",
   "author": "Leonardo Corte and the Aleph Protocol contributors",
-  "repository": { "type": "git", "url": "git+https://github.com/Leonardo-Corte/aleph-protocol.git", "directory": "packages/mcp" },
-  "engines": { "node": ">=22" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Leonardo-Corte/aleph-protocol.git",
+    "directory": "packages/mcp"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "bin": { "aleph-mcp": "./dist/server.js" },
-  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "aleph-mcp": "./dist/server.js"
+  },
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
-  "publishConfig": { "access": "public", "provenance": true },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "dependencies": {
     "@aleph/core": "workspace:*",
     "@aleph/client": "workspace:*",

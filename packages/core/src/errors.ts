@@ -17,7 +17,10 @@ export type AlephErrorCode =
   | "ATTEST_INVALID" // attestation not backed by a settlement
   | "INTERNAL"; // unexpected server error
 
-export type AlephError = { code: AlephErrorCode; message: string };
+export interface AlephError {
+  code: AlephErrorCode;
+  message: string;
+}
 
 export function err(code: AlephErrorCode, message: string): AlephError {
   return { code, message };

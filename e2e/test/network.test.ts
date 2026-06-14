@@ -1,15 +1,15 @@
 // Phase E: networking maturity — capability vocabulary, did:web resolution,
 // and registry federation (gossip).
 
-import { test } from "node:test";
 import assert from "node:assert/strict";
 import { sign, verify } from "node:crypto";
+import { test } from "node:test";
+import { resolve } from "@aleph/client";
 import { generateIdentity } from "@aleph/core";
 import { Vocabulary, isWellFormedKey, namespaceOf } from "@aleph/core";
 import { publicKeyFromVerificationMethod } from "@aleph/core";
 import { createNode } from "@aleph/node";
 import { createRegistry } from "@aleph/registry";
-import { resolve } from "@aleph/client";
 
 test("vocabulary: well-formedness, namespacing, validation, proposal", () => {
   assert.equal(isWellFormedKey("restaurant.booking"), true);
@@ -35,7 +35,10 @@ test("did:web verificationMethod parses into a key that verifies a real signatur
   const didDoc = {
     id: "did:web:example.com",
     verificationMethod: [
-      { type: "JsonWebKey2020", publicKeyJwk: id.publicKey.export({ format: "jwk" }) as { kty: string; crv: string; x: string } },
+      {
+        type: "JsonWebKey2020",
+        publicKeyJwk: id.publicKey.export({ format: "jwk" }) as { kty: string; crv: string; x: string },
+      },
     ],
   };
   const pub = publicKeyFromVerificationMethod(didDoc);
@@ -56,7 +59,9 @@ test("registry federation: register at one, discover at the peer", async () => {
   const node = createNode({
     identity: generateIdentity(),
     port: 4612,
-    capabilities: { "math.add": { handler: (i) => ({ output: { sum: (i.a as number) + (i.b as number) } }) } },
+    capabilities: {
+      "math.add": { handler: (i) => ({ output: { sum: (i.a as number) + (i.b as number) } }) },
+    },
   });
   await node.listen();
 

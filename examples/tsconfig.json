@@ -7,7 +7,8 @@
       "@aleph/core": ["../packages/core/src/index.ts"],
       "@aleph/node": ["../packages/node/src/index.ts"],
       "@aleph/registry": ["../packages/registry/src/index.ts"],
-      "@aleph/client": ["../packages/client/src/index.ts"]
+      "@aleph/client": ["../packages/client/src/index.ts"],
+      "@aleph/transport": ["../packages/transport/src/index.ts"]
     }
   },
   "include": ["src"]

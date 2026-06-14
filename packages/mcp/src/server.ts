@@ -7,12 +7,12 @@
 // IMPORTANT: never write to stdout here — stdout is the JSON-RPC channel.
 // Diagnostics go to stderr.
 
+import { resolve, fetchManifest, invoke } from "@aleph/client";
+import { generateIdentity } from "@aleph/core";
+import { createGrant } from "@aleph/core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { generateIdentity } from "@aleph/core";
-import { createGrant } from "@aleph/core";
-import { resolve, fetchManifest, invoke } from "@aleph/client";
 
 // The agent's identity for this session. In v0 it also acts as its own
 // principal (self-delegation); in a fuller build the Grant would be issued by
@@ -30,7 +30,10 @@ server.registerTool(
       "Ask the Aleph registry which nodes provide a capability. Returns pointers: did, manifest URL, and a one-line summary. Pull-not-push: fetch a full manifest only for a candidate you choose.",
     inputSchema: {
       capability: z.string().describe("semantic capability key, e.g. 'math.add'"),
-      registryUrl: z.string().optional().describe("registry base URL (defaults to $ALEPH_REGISTRY or localhost:4000)"),
+      registryUrl: z
+        .string()
+        .optional()
+        .describe("registry base URL (defaults to $ALEPH_REGISTRY or localhost:4000)"),
     },
   },
   async ({ capability, registryUrl }) => {
@@ -61,7 +64,10 @@ server.registerTool(
     const manifest = await fetchManifest(chosen.manifest);
     const endpoint = manifest.endpoint[0];
     if (!endpoint) {
-      return { content: [{ type: "text", text: `Node for "${capability}" has no endpoint.` }], isError: true };
+      return {
+        content: [{ type: "text", text: `Node for "${capability}" has no endpoint.` }],
+        isError: true,
+      };
     }
     const grant = createGrant(
       {

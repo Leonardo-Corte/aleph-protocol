@@ -4,12 +4,12 @@
 // type, properties, required, items. (ajv could replace this for full JSON
 // Schema; this keeps the core dependency-free.)
 
-export type JsonSchema = {
+export interface JsonSchema {
   type?: "object" | "string" | "number" | "integer" | "boolean" | "array";
   properties?: Record<string, JsonSchema>;
   required?: string[];
   items?: JsonSchema;
-};
+}
 
 export function validateSchema(
   schema: JsonSchema | undefined,

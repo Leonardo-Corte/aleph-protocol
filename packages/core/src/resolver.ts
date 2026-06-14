@@ -23,8 +23,8 @@ export async function resolveDid(did: string): Promise<KeyObject> {
   return resolver(did);
 }
 
-// did:key — local, synchronous under the hood.
-registerDidMethod("key", async (did) => publicKeyFromDid(did));
+// did:key — local, synchronous under the hood (wrapped to satisfy the async interface).
+registerDidMethod("key", (did) => Promise.resolve(publicKeyFromDid(did)));
 
 // did:web — did:web:example.com[:path] -> https://example.com[/path]/did.json
 // (root form uses /.well-known/did.json), per the did:web method.
@@ -34,22 +34,20 @@ registerDidMethod("web", async (did) => {
   const host = parts[0];
   const path = parts.slice(1);
   const url =
-    path.length === 0
-      ? `https://${host}/.well-known/did.json`
-      : `https://${host}/${path.join("/")}/did.json`;
+    path.length === 0 ? `https://${host}/.well-known/did.json` : `https://${host}/${path.join("/")}/did.json`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`did:web fetch failed (${res.status}) for ${url}`);
   const doc = (await res.json()) as DidDocument;
   return publicKeyFromVerificationMethod(doc);
 });
 
-export type DidDocument = {
-  verificationMethod?: Array<{
+export interface DidDocument {
+  verificationMethod?: {
     type?: string;
     publicKeyJwk?: { kty: string; crv: string; x: string };
     publicKeyMultibase?: string;
-  }>;
-};
+  }[];
+}
 
 export function publicKeyFromVerificationMethod(doc: DidDocument): KeyObject {
   const vm = doc.verificationMethod?.[0];

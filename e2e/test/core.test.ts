@@ -1,5 +1,5 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { generateIdentity, publicKeyFromDid } from "@aleph/core";
 import { createEnvelope, verifyEnvelope } from "@aleph/core";
 import { createGrant, verifyGrant } from "@aleph/core";

@@ -9,11 +9,11 @@ import { base58encode, base58decode } from "./base58";
 // Multicodec prefix for an Ed25519 public key (0xed 0x01).
 const ED25519_PREFIX = new Uint8Array([0xed, 0x01]);
 
-export type Identity = {
+export interface Identity {
   did: string;
   publicKey: KeyObject;
   privateKey: KeyObject;
-};
+}
 
 function rawPublicKey(pub: KeyObject): Uint8Array {
   const jwk = pub.export({ format: "jwk" }) as { x: string };

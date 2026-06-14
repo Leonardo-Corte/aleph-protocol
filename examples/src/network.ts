@@ -3,8 +3,8 @@
 // to it. Run this in one terminal; point your agent's MCP config at the server.
 
 import { generateIdentity } from "@aleph/core";
-import { createRegistry } from "@aleph/registry";
 import { createNode } from "@aleph/node";
+import { createRegistry } from "@aleph/registry";
 
 const registry = createRegistry({ port: 4000 });
 await registry.listen();

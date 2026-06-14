@@ -4,21 +4,22 @@
 // verify both the signed receipt and the settlement.
 
 import { randomUUID } from "node:crypto";
-import { createEnvelope, verifyEnvelope, type Envelope } from "@aleph/core";
 import type { Identity } from "@aleph/core";
 import type { Grant } from "@aleph/core";
 import type { Manifest } from "@aleph/core";
+import { createEnvelope, verifyEnvelope, type Envelope } from "@aleph/core";
 import { verifySettlement, type SettlementRail, type SettlementRecord } from "@aleph/core";
 import { createAttestation, computeTrust, type Attestation } from "@aleph/core";
 
-export type Pointer = { did: string; manifest: string; summary: string; reputation?: string };
+export interface Pointer {
+  did: string;
+  manifest: string;
+  summary: string;
+  reputation?: string;
+}
 
 // FIND — ask a registry "who does X?"
-export async function resolve(
-  registryUrl: string,
-  capability: string,
-  agent: Identity,
-): Promise<Pointer[]> {
+export async function resolve(registryUrl: string, capability: string, agent: Identity): Promise<Pointer[]> {
   const env = createEnvelope(
     { from: agent.did, to: "did:aleph:registry", type: "RESOLVE", body: { capability } },
     agent.privateKey,
@@ -138,7 +139,7 @@ export async function resolveRanked(
   registryUrl: string,
   capability: string,
   agent: Identity,
-): Promise<Array<Pointer & { trust: number; attestations: number }>> {
+): Promise<(Pointer & { trust: number; attestations: number })[]> {
   const pointers = await resolve(registryUrl, capability, agent);
   const ranked = await Promise.all(
     pointers.map(async (p) => {

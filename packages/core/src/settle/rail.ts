@@ -8,21 +8,21 @@
 // in escrow it can be refunded on failure.
 
 import { sign, verify } from "node:crypto";
-import { generateIdentity, publicKeyFromDid, type Identity } from "../identity";
 import { canonicalize } from "../canonical";
+import { generateIdentity, publicKeyFromDid, type Identity } from "../identity";
 
 export type EscrowStatus = "locked" | "released" | "refunded";
 
-export type Escrow = {
+export interface Escrow {
   id: string;
   payer: string;
   payee: string;
   amount: number;
   invokeRef: string;
   status: EscrowStatus;
-};
+}
 
-export type SettlementRecord = {
+export interface SettlementRecord {
   escrowId: string;
   payer: string;
   payee: string;
@@ -33,7 +33,7 @@ export type SettlementRecord = {
   rail: string;
   ts: number;
   sig: string;
-};
+}
 
 export class SettlementRail {
   identity: Identity;

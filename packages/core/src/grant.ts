@@ -5,15 +5,15 @@
 
 import { sign, verify } from "node:crypto";
 import { canonicalize } from "./canonical";
-import { publicKeyFromDid, type Identity } from "./identity";
 import { PROTOCOL_VERSION } from "./envelope";
+import { publicKeyFromDid, type Identity } from "./identity";
 
-export type GrantScope = {
+export interface GrantScope {
   capability: string;
   limit?: Record<string, unknown>;
-};
+}
 
-export type Grant = {
+export interface Grant {
   v: string;
   issuer: string;
   grantee: string;
@@ -21,7 +21,7 @@ export type Grant = {
   not_after: number;
   delegable?: boolean;
   sig?: string;
-};
+}
 
 export function createGrant(
   params: { issuer: string; grantee: string; scope: GrantScope[]; not_after: number; delegable?: boolean },

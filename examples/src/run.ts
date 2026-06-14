@@ -3,11 +3,11 @@
 // authority by its principal, INVOKEs the node, and verifies the signed
 // RECEIPT. Two nodes speaking the new language, for real.
 
+import { resolve, fetchManifest, invoke } from "@aleph/client";
 import { generateIdentity } from "@aleph/core";
 import { createGrant } from "@aleph/core";
-import { createRegistry } from "@aleph/registry";
 import { createNode } from "@aleph/node";
-import { resolve, fetchManifest, invoke } from "@aleph/client";
+import { createRegistry } from "@aleph/registry";
 
 const short = (did: string) => did.slice(0, 20) + "…";
 
@@ -46,7 +46,9 @@ await fetch(registry.url + "/register", {
 
 // 1. FIND
 const results = await resolve(registry.url, "math.add", agent);
-console.log(`1. RESOLVE  → found ${results.length} node(s) for "math.add": ${results.map((r) => short(r.did)).join(", ")}`);
+console.log(
+  `1. RESOLVE  → found ${results.length} node(s) for "math.add": ${results.map((r) => short(r.did)).join(", ")}`,
+);
 
 // fetch the chosen node's full manifest (lazy, only for the candidate)
 const chosen = results[0];
@@ -76,7 +78,7 @@ const { result, outcome, receipt } = await invoke({
   grant,
   agent,
 });
-console.log(`3. INVOKE   → math.add(2, 3) → ${JSON.stringify(result)} · outcome: ${outcome}`);
+console.log(`3. INVOKE   → math.add(2, 3) → ${JSON.stringify(result)} · outcome: ${String(outcome)}`);
 console.log(`4. RECEIPT  → verified, signed by node ${short(receipt.from)}`);
 
 // --- prove the bounded-authority gate actually bites: no grant ⇒ rejected ---
@@ -87,7 +89,9 @@ const noGrant = await invoke({
   input: { a: 1, b: 1 },
   agent, // no grant
 });
-console.log(`5. GATE     → invoke without a grant → outcome: ${noGrant.outcome} (${JSON.stringify(noGrant.result)})`);
+console.log(
+  `5. GATE     → invoke without a grant → outcome: ${String(noGrant.outcome)} (${JSON.stringify(noGrant.result)})`,
+);
 
 console.log("\nTwo nodes spoke Aleph end to end. The network has its first four nodes. ✅");
 

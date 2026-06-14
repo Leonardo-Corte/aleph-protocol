@@ -7,10 +7,10 @@ import type { Identity } from "@aleph/core";
 import type { Grant } from "@aleph/core";
 import type { Envelope } from "@aleph/core";
 import type { SettlementRail } from "@aleph/core";
-import { invoke } from "./client";
 import { linkTo, verifyReceiptChain, type ChainCheck } from "@aleph/core";
+import { invoke } from "./client";
 
-export type Step = {
+export interface Step {
   nodeDid: string;
   endpoint: string;
   capability: string;
@@ -20,13 +20,13 @@ export type Step = {
   pick: (result: unknown) => unknown;
   grant?: Grant;
   payEur?: number;
-};
+}
 
-export type Composition = {
+export interface Composition {
   value: unknown;
   receipts: Envelope[];
   chain: ChainCheck;
-};
+}
 
 // Run the steps in order, threading a carry value through and chaining each
 // receipt to the previous one. The returned chain is independently auditable.

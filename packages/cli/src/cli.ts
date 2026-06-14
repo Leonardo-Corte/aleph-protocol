@@ -7,11 +7,11 @@
 //   node src/cli.ts resolve <capability> --registry http://127.0.0.1:4000
 //   node src/cli.ts invoke  <capability> --registry http://127.0.0.1:4000 --input '{"a":2,"b":3}'
 
+import { resolveRanked, fetchManifest, invoke } from "@aleph/client";
 import { generateIdentity } from "@aleph/core";
 import { createGrant } from "@aleph/core";
-import { createRegistry } from "@aleph/registry";
 import { createNode } from "@aleph/node";
-import { resolveRanked, fetchManifest, invoke } from "@aleph/client";
+import { createRegistry } from "@aleph/registry";
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf("--" + name);
@@ -45,7 +45,11 @@ switch (cmd) {
       port,
       capabilities: {
         "math.add": {
-          schema: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },
+          schema: {
+            type: "object",
+            properties: { a: { type: "number" }, b: { type: "number" } },
+            required: ["a", "b"],
+          },
           handler: (i) => ({ output: { sum: (i.a as number) + (i.b as number) } }),
         },
       },
@@ -59,7 +63,9 @@ switch (cmd) {
       });
     }
     console.log(`node ${node.manifest.identity}`);
-    console.log(`listening on ${node.url} · capability: math.add` + (registry ? ` · registered at ${registry}` : ""));
+    console.log(
+      `listening on ${node.url} · capability: math.add` + (registry ? ` · registered at ${registry}` : ""),
+    );
     break;
   }
 

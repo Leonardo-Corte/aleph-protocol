@@ -8,11 +8,11 @@
 // weights by settled value with its own policy.
 
 import { sign, verify } from "node:crypto";
-import { publicKeyFromDid, type Identity } from "../identity";
 import { canonicalize } from "../canonical";
+import { publicKeyFromDid, type Identity } from "../identity";
 import { verifySettlement, type SettlementRecord } from "../settle/rail";
 
-export type Attestation = {
+export interface Attestation {
   v: string;
   subject: string; // the party being attested about (the payee)
   issued_by: string; // the attester (the payer)
@@ -21,7 +21,7 @@ export type Attestation = {
   claim?: string;
   ts: number;
   sig: string;
-};
+}
 
 export function createAttestation(
   issuer: Identity,
@@ -66,9 +66,11 @@ export function verifyAttestation(att: Attestation): { ok: boolean; reason?: str
 
 // Consumer-computed trust: verify each, dedupe by settlement (so one payment
 // cannot be reused to inflate), weight rating by settled value.
-export function computeTrust(
-  attestations: Attestation[],
-): { score: number; count: number; totalValue: number } {
+export function computeTrust(attestations: Attestation[]): {
+  score: number;
+  count: number;
+  totalValue: number;
+} {
   let weighted = 0;
   let totalValue = 0;
   let count = 0;

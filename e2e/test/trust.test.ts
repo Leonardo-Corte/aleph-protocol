@@ -3,21 +3,23 @@
 // - an attestation NOT backed by a settlement is zero-weight (anti-Sybil);
 // - the consumer computes trust itself and ranks discovery by it.
 
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
+import { invoke, attest, fetchReputation, resolveRanked } from "@aleph/client";
 import { generateIdentity } from "@aleph/core";
 import { SettlementRail } from "@aleph/core";
 import { createAttestation, verifyAttestation, computeTrust, type Attestation } from "@aleph/core";
 import { createNode } from "@aleph/node";
 import { createRegistry } from "@aleph/registry";
-import { invoke, attest, fetchReputation, resolveRanked } from "@aleph/client";
 
 const addSchema = {
   type: "object" as const,
   properties: { a: { type: "number" as const }, b: { type: "number" as const } },
   required: ["a", "b"],
 };
-const adder = (input: Record<string, unknown>) => ({ output: { sum: (input.a as number) + (input.b as number) } });
+const adder = (input: Record<string, unknown>) => ({
+  output: { sum: (input.a as number) + (input.b as number) },
+});
 
 test("a settlement-backed attestation verifies; an unbacked one is rejected", () => {
   const rail = new SettlementRail();

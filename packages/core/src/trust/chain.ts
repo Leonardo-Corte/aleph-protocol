@@ -6,7 +6,11 @@
 import { verifyEnvelope, type Envelope } from "../envelope";
 import { hashObject } from "../hash";
 
-export type ChainCheck = { ok: boolean; steps: number; reason?: string };
+export interface ChainCheck {
+  ok: boolean;
+  steps: number;
+  reason?: string;
+}
 
 // Verify a linear chain of receipts (oldest first). Each receipt must:
 //  - carry a valid signature,

@@ -1,14 +1,14 @@
 // Phase F: security hardening. The transport rejects oversized payloads, the
 // public API barrel re-exports the surface, and negative gates hold.
 
-import { test } from "node:test";
 import assert from "node:assert/strict";
-import * as core from "@aleph/core";
-import * as node from "@aleph/node";
-import * as registry from "@aleph/registry";
+import { test } from "node:test";
 import * as client from "@aleph/client";
+import * as core from "@aleph/core";
 import { generateIdentity } from "@aleph/core";
+import * as node from "@aleph/node";
 import { createNode } from "@aleph/node";
+import * as registry from "@aleph/registry";
 
 test("each package exposes its public surface", () => {
   const expect = (mod: Record<string, unknown>, names: string[]) => {
@@ -16,7 +16,7 @@ test("each package exposes its public surface", () => {
       assert.equal(typeof mod[name], "function", `missing export: ${name}`);
     }
   };
-  expect(core as Record<string, unknown>, [
+  expect(core, [
     "generateIdentity",
     "createEnvelope",
     "verifyEnvelope",
@@ -28,9 +28,9 @@ test("each package exposes its public surface", () => {
     "verifyReceiptChain",
     "Vocabulary",
   ]);
-  expect(node as Record<string, unknown>, ["createNode"]);
-  expect(registry as Record<string, unknown>, ["createRegistry"]);
-  expect(client as Record<string, unknown>, ["resolve", "invoke", "compose"]);
+  expect(node, ["createNode"]);
+  expect(registry, ["createRegistry"]);
+  expect(client, ["resolve", "invoke", "compose"]);
 });
 
 test("node rejects an oversized payload (DoS guard)", async () => {

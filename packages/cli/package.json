@@ -5,12 +5,25 @@
   "type": "module",
   "license": "Apache-2.0",
   "author": "Leonardo Corte and the Aleph Protocol contributors",
-  "repository": { "type": "git", "url": "git+https://github.com/Leonardo-Corte/aleph-protocol.git", "directory": "packages/cli" },
-  "engines": { "node": ">=22" },
-  "bin": { "aleph": "./dist/cli.js" },
-  "files": ["dist"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Leonardo-Corte/aleph-protocol.git",
+    "directory": "packages/cli"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "aleph": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
-  "publishConfig": { "access": "public", "provenance": true },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "dependencies": {
     "@aleph/core": "workspace:*",
     "@aleph/client": "workspace:*",

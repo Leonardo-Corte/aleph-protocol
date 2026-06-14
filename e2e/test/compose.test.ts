@@ -2,13 +2,13 @@
 // An agent composes a task across two competing nodes, paying each for its own
 // function, and ends with a verifiable, tamper-evident receipt chain.
 
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
+import { compose } from "@aleph/client";
 import { generateIdentity } from "@aleph/core";
 import { SettlementRail } from "@aleph/core";
-import { createNode } from "@aleph/node";
-import { compose } from "@aleph/client";
 import { verifyReceiptChain } from "@aleph/core";
+import { createNode } from "@aleph/node";
 
 test("compose chains two nodes into one verified result + receipt chain", async () => {
   const rail = new SettlementRail();
@@ -25,7 +25,11 @@ test("compose chains two nodes into one verified result + receipt chain", async 
     capabilities: {
       "math.add": {
         priceEur: 1,
-        schema: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },
+        schema: {
+          type: "object",
+          properties: { a: { type: "number" }, b: { type: "number" } },
+          required: ["a", "b"],
+        },
         handler: (i) => ({ output: { value: (i.a as number) + (i.b as number) } }),
       },
     },
@@ -64,7 +68,7 @@ test("compose chains two nodes into one verified result + receipt chain", async 
           nodeDid: doublerId.did,
           endpoint: doubler.url + "/aleph",
           capability: "math.double",
-          input: (c) => ({ x: c as number }),
+          input: (c) => ({ x: c }),
           pick: (r) => (r as { value: number }).value,
           payEur: 1,
         },
@@ -98,7 +102,11 @@ test("a tampered receipt breaks chain verification", async () => {
     capabilities: {
       "math.add": {
         priceEur: 1,
-        schema: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } }, required: ["a", "b"] },
+        schema: {
+          type: "object",
+          properties: { a: { type: "number" }, b: { type: "number" } },
+          required: ["a", "b"],
+        },
         handler: (i) => ({ output: { value: (i.a as number) + (i.b as number) } }),
       },
     },

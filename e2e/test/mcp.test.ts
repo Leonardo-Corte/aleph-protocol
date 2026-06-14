@@ -2,14 +2,14 @@
 // Aleph through the MCP server, against a live registry + node. This is "an
 // agent uses Aleph natively" end to end.
 
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { generateIdentity } from "@aleph/core";
+import { createNode } from "@aleph/node";
+import { createRegistry } from "@aleph/registry";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { generateIdentity } from "@aleph/core";
-import { createRegistry } from "@aleph/registry";
-import { createNode } from "@aleph/node";
 
 test("an MCP agent resolves and invokes an Aleph node, getting a verified receipt", async () => {
   // live registry + node
@@ -46,7 +46,7 @@ test("an MCP agent resolves and invokes an Aleph node, getting a verified receip
 
     // FIND
     const found = await client.callTool({ name: "aleph_resolve", arguments: { capability: "math.add" } });
-    const foundText = (found.content as Array<{ text: string }>)[0]?.text ?? "";
+    const foundText = (found.content as { text: string }[])[0]?.text ?? "";
     assert.match(foundText, /did:key:z/);
 
     // ACT + PROVE
@@ -54,7 +54,7 @@ test("an MCP agent resolves and invokes an Aleph node, getting a verified receip
       name: "aleph_invoke",
       arguments: { capability: "math.add", input: { a: 2, b: 3 }, maxEur: 10 },
     });
-    const actedText = (acted.content as Array<{ text: string }>)[0]?.text ?? "{}";
+    const actedText = (acted.content as { text: string }[])[0]?.text ?? "{}";
     const out = JSON.parse(actedText);
     assert.equal(out.outcome, "success");
     assert.deepEqual(out.result, { sum: 5 });

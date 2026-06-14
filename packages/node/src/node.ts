@@ -7,31 +7,31 @@
 import http from "node:http";
 import type { ServerResponse } from "node:http";
 import type { Identity } from "@aleph/core";
+import type { Manifest } from "@aleph/core";
+import type { SettlementRail, SettlementRecord } from "@aleph/core";
 import { createEnvelope, type Envelope } from "@aleph/core";
 import { NonceStore, verifyReceived } from "@aleph/core";
 import { verifyGrant, type Grant } from "@aleph/core";
 import { hashObject } from "@aleph/core";
 import { validateSchema, type JsonSchema } from "@aleph/core";
 import { err, type AlephError } from "@aleph/core";
-import type { Manifest } from "@aleph/core";
-import type { SettlementRail, SettlementRecord } from "@aleph/core";
 import { verifyAttestation, type Attestation } from "@aleph/core";
-import { readJson, sendJson } from "@aleph/transport";
+import { readJson, sendJson, asyncHandler } from "@aleph/transport";
 
-type CapabilitySpec = {
+interface CapabilitySpec {
   handler: (input: Record<string, unknown>) => { output: Record<string, unknown> };
   requiredGrant?: boolean;
   risk?: "low" | "medium" | "high";
   schema?: JsonSchema;
   priceEur?: number;
-};
+}
 
-export type NodeOptions = {
+export interface NodeOptions {
   identity: Identity;
   port: number;
   capabilities: Record<string, CapabilitySpec>;
   rail?: SettlementRail;
-};
+}
 
 export function createNode(opts: NodeOptions) {
   const { identity, port } = opts;
@@ -81,7 +81,7 @@ export function createNode(opts: NodeOptions) {
           result,
           settle_ref: settlement ? hashObject(settlement) : null,
           settlement: settlement ?? null,
-          prev: (invoke.body.prev as string[] | undefined) ?? [],
+          prev: invoke.body.prev ?? [],
           issued_by: identity.did,
         },
       },
@@ -90,97 +90,148 @@ export function createNode(opts: NodeOptions) {
     sendJson(res, 200, receipt);
   }
 
-  const reject = (res: ServerResponse, invoke: Envelope, e: AlephError) =>
+  const reject = (res: ServerResponse, invoke: Envelope, e: AlephError) => {
     sendReceipt(res, invoke, "rejected", { error: e });
+  };
 
-  const server = http.createServer(async (req, res) => {
-    try {
-      if (req.method === "GET" && req.url === "/manifest") {
-        return sendJson(res, 200, manifest);
-      }
-      // Serve the raw attestation set (the consumer computes its own trust).
-      if (req.method === "GET" && req.url === "/reputation") {
-        return sendJson(res, 200, { subject: identity.did, attestations: reputation });
-      }
-      // Receive an attestation written about this node; store only if it is
-      // backed by a valid, released settlement to this node (anti-Sybil).
-      if (req.method === "POST" && req.url === "/attest") {
-        const att = (await readJson(req)) as unknown as Attestation;
-        const av = verifyAttestation(att);
-        if (!av.ok) return sendJson(res, 400, { error: err("ATTEST_INVALID", av.reason ?? "invalid") });
-        if (att.subject !== identity.did) {
-          return sendJson(res, 400, { error: err("ATTEST_INVALID", "not about this node") });
+  const server = http.createServer(
+    asyncHandler(async (req, res) => {
+      try {
+        if (req.method === "GET" && req.url === "/manifest") {
+          sendJson(res, 200, manifest);
+          return;
         }
-        // One settlement can back at most one stored attestation.
-        if (!reputation.some((a) => a.settlement.escrowId === att.settlement.escrowId)) {
-          reputation.push(att);
+        // Serve the raw attestation set (the consumer computes its own trust).
+        if (req.method === "GET" && req.url === "/reputation") {
+          sendJson(res, 200, { subject: identity.did, attestations: reputation });
+          return;
         }
-        return sendJson(res, 200, { ok: true });
-      }
-      if (req.method === "POST" && req.url === "/aleph") {
-        const env = (await readJson(req)) as unknown as Envelope;
-
-        // 1. waist: signature + version + skew + replay
-        const v = verifyReceived(env, { nonceStore: nonces });
-        if (!v.ok) return sendJson(res, 400, { error: err(v.code!, v.reason!) });
-        if (env.type !== "INVOKE") {
-          return sendJson(res, 400, { error: err("WRONG_TYPE", "node only accepts INVOKE") });
-        }
-
-        // 2. capability exists
-        const capName = env.body.capability as string;
-        const cap = opts.capabilities[capName];
-        if (!cap) return reject(res, env, err("UNKNOWN_CAPABILITY", capName));
-
-        // 3. bounded-authority gate
-        if (cap.requiredGrant) {
-          const grant = env.body.grant as Grant | undefined;
-          if (!grant) return reject(res, env, err("GRANT_REQUIRED", "this capability requires a grant"));
-          const g = verifyGrant(grant, { grantee: env.from, capability: capName });
-          if (!g.ok) return reject(res, env, err("GRANT_INVALID", g.reason ?? "grant invalid"));
-        }
-
-        // 4. typed input
-        const input = (env.body.input ?? {}) as Record<string, unknown>;
-        const sv = validateSchema(cap.schema, input);
-        if (!sv.ok) return reject(res, env, err("SCHEMA_INVALID", sv.reason ?? "input invalid"));
-
-        // 5. payment escrow (for priced capabilities)
-        const price = cap.priceEur ?? 0;
-        let escrowId: string | undefined;
-        if (price > 0) {
-          if (!opts.rail) return reject(res, env, err("INTERNAL", "node priced but has no rail"));
-          const payment = env.body.payment as { escrow?: string } | undefined;
-          if (!payment?.escrow) return reject(res, env, err("PAYMENT_REQUIRED", "payment escrow required"));
-          const e = opts.rail.get(payment.escrow);
-          if (!e || e.status !== "locked") return reject(res, env, err("SETTLE_INVALID", "escrow missing or not locked"));
-          if (e.payer !== env.from || e.payee !== identity.did) {
-            return reject(res, env, err("SETTLE_INVALID", "escrow parties mismatch"));
+        // Receive an attestation written about this node; store only if it is
+        // backed by a valid, released settlement to this node (anti-Sybil).
+        if (req.method === "POST" && req.url === "/attest") {
+          const att = (await readJson(req)) as unknown as Attestation;
+          const av = verifyAttestation(att);
+          if (!av.ok) {
+            sendJson(res, 400, { error: err("ATTEST_INVALID", av.reason ?? "invalid") });
+            return;
           }
-          if (e.amount < price) return reject(res, env, err("INSUFFICIENT_FUNDS", "escrow below price"));
-          escrowId = payment.escrow;
+          if (att.subject !== identity.did) {
+            sendJson(res, 400, { error: err("ATTEST_INVALID", "not about this node") });
+            return;
+          }
+          // One settlement can back at most one stored attestation.
+          if (!reputation.some((a) => a.settlement.escrowId === att.settlement.escrowId)) {
+            reputation.push(att);
+          }
+          sendJson(res, 200, { ok: true });
+          return;
         }
+        if (req.method === "POST" && req.url === "/aleph") {
+          const env = (await readJson(req)) as unknown as Envelope;
 
-        // 6. act — settle atomically with delivery; refund on failure
-        try {
-          const { output } = cap.handler(input);
-          const settlement = escrowId && opts.rail ? opts.rail.release(escrowId) : undefined;
-          return sendReceipt(res, env, "success", output, settlement);
-        } catch (e) {
-          const refund = escrowId && opts.rail ? opts.rail.refund(escrowId) : undefined;
-          return sendReceipt(res, env, "failure", { error: err("INTERNAL", (e as Error).message) }, refund);
+          // 1. waist: signature + version + skew + replay
+          const v = verifyReceived(env, { nonceStore: nonces });
+          if (!v.ok) {
+            sendJson(res, 400, { error: err(v.code!, v.reason!) });
+            return;
+          }
+          if (env.type !== "INVOKE") {
+            sendJson(res, 400, { error: err("WRONG_TYPE", "node only accepts INVOKE") });
+            return;
+          }
+
+          // 2. capability exists
+          const capName = env.body.capability as string;
+          const cap = opts.capabilities[capName];
+          if (!cap) {
+            reject(res, env, err("UNKNOWN_CAPABILITY", capName));
+            return;
+          }
+
+          // 3. bounded-authority gate
+          if (cap.requiredGrant) {
+            const grant = env.body.grant as Grant | undefined;
+            if (!grant) {
+              reject(res, env, err("GRANT_REQUIRED", "this capability requires a grant"));
+              return;
+            }
+            const g = verifyGrant(grant, { grantee: env.from, capability: capName });
+            if (!g.ok) {
+              reject(res, env, err("GRANT_INVALID", g.reason ?? "grant invalid"));
+              return;
+            }
+          }
+
+          // 4. typed input
+          const input = (env.body.input ?? {}) as Record<string, unknown>;
+          const sv = validateSchema(cap.schema, input);
+          if (!sv.ok) {
+            reject(res, env, err("SCHEMA_INVALID", sv.reason ?? "input invalid"));
+            return;
+          }
+
+          // 5. payment escrow (for priced capabilities)
+          const price = cap.priceEur ?? 0;
+          let escrowId: string | undefined;
+          if (price > 0) {
+            if (!opts.rail) {
+              reject(res, env, err("INTERNAL", "node priced but has no rail"));
+              return;
+            }
+            const payment = env.body.payment as { escrow?: string } | undefined;
+            if (!payment?.escrow) {
+              reject(res, env, err("PAYMENT_REQUIRED", "payment escrow required"));
+              return;
+            }
+            const e = opts.rail.get(payment.escrow);
+            if (e?.status !== "locked") {
+              reject(res, env, err("SETTLE_INVALID", "escrow missing or not locked"));
+              return;
+            }
+            if (e.payer !== env.from || e.payee !== identity.did) {
+              reject(res, env, err("SETTLE_INVALID", "escrow parties mismatch"));
+              return;
+            }
+            if (e.amount < price) {
+              reject(res, env, err("INSUFFICIENT_FUNDS", "escrow below price"));
+              return;
+            }
+            escrowId = payment.escrow;
+          }
+
+          // 6. act — settle atomically with delivery; refund on failure
+          try {
+            const { output } = cap.handler(input);
+            const settlement = escrowId && opts.rail ? opts.rail.release(escrowId) : undefined;
+            sendReceipt(res, env, "success", output, settlement);
+            return;
+          } catch (e) {
+            const refund = escrowId && opts.rail ? opts.rail.refund(escrowId) : undefined;
+            sendReceipt(res, env, "failure", { error: err("INTERNAL", (e as Error).message) }, refund);
+            return;
+          }
         }
+        sendJson(res, 404, { error: err("WRONG_TYPE", "not found") });
+      } catch (e) {
+        sendJson(res, 500, { error: err("INTERNAL", (e as Error).message) });
       }
-      sendJson(res, 404, { error: err("WRONG_TYPE", "not found") });
-    } catch (e) {
-      sendJson(res, 500, { error: err("INTERNAL", (e as Error).message) });
-    }
-  });
+    }),
+  );
 
   return {
     manifest,
     url: baseUrl,
-    listen: () => new Promise<void>((r) => server.listen(port, "127.0.0.1", () => r())),
-    close: () => new Promise<void>((r) => server.close(() => r())),
+    listen: () =>
+      new Promise<void>((r) =>
+        server.listen(port, "127.0.0.1", () => {
+          r();
+        }),
+      ),
+    close: () =>
+      new Promise<void>((r) =>
+        server.close(() => {
+          r();
+        }),
+      ),
   };
 }

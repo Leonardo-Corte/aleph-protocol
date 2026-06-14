@@ -10,7 +10,7 @@ export const PROTOCOL_VERSION = "aleph/0.1";
 
 export type EnvelopeType = "RESOLVE" | "INVOKE" | "RECEIPT" | "ATTEST" | "SETTLE";
 
-export type Envelope = {
+export interface Envelope {
   v: string;
   from: string;
   to: string;
@@ -19,7 +19,7 @@ export type Envelope = {
   ts: number;
   body: Record<string, unknown>;
   sig?: string;
-};
+}
 
 export function createEnvelope(
   params: { from: string; to: string; type: EnvelopeType; body: Record<string, unknown> },
