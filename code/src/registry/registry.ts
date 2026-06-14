@@ -13,9 +13,44 @@ import { readJson, sendJson } from "../transport/http.ts";
 
 type Pointer = { did: string; manifest: string; summary: string; reputation?: string };
 
-export function createRegistry(opts: { port: number }) {
+// Federated registries gossip registrations to peers, so a RESOLVE to any
+// registry yields a comparable view. No registry is authoritative — discovery
+// is a service to the network, not the network.
+export function createRegistry(opts: { port: number; peers?: string[] }) {
   const byCapability = new Map<string, Pointer[]>();
   const nonces = new NonceStore();
+  const peers = opts.peers ?? [];
+
+  function index(manifest: Manifest, manifestUrl: string): boolean {
+    let added = false;
+    for (const cap of manifest.capabilities) {
+      const list = byCapability.get(cap.key) ?? [];
+      if (!list.some((p) => p.did === manifest.identity)) {
+        list.push({
+          did: manifest.identity,
+          manifest: manifestUrl,
+          summary: `${cap.key} · risk:${cap.risk ?? "low"}`,
+          reputation: manifest.reputation,
+        });
+        added = true;
+      }
+      byCapability.set(cap.key, list);
+    }
+    return added;
+  }
+
+  async function gossip(manifest: Manifest, manifestUrl: string): Promise<void> {
+    await Promise.allSettled(
+      peers.map((peer) =>
+        fetch(peer + "/register", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          // `gossiped` flag prevents infinite propagation loops.
+          body: JSON.stringify({ manifest, manifestUrl, gossiped: true }),
+        }),
+      ),
+    );
+  }
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -26,19 +61,9 @@ export function createRegistry(opts: { port: number }) {
         const manifestUrl = body.manifestUrl as string;
         const v = validateManifest(manifest);
         if (!v.ok) return sendJson(res, 400, { error: err("ENVELOPE_INVALID", v.reason ?? "bad manifest") });
-        for (const cap of manifest.capabilities) {
-          const list = byCapability.get(cap.key) ?? [];
-          // Avoid duplicate (did, capability) entries on re-registration.
-          if (!list.some((p) => p.did === manifest.identity)) {
-            list.push({
-              did: manifest.identity,
-              manifest: manifestUrl,
-              summary: `${cap.key} · risk:${cap.risk ?? "low"}`,
-              reputation: manifest.reputation,
-            });
-          }
-          byCapability.set(cap.key, list);
-        }
+        const added = index(manifest, manifestUrl);
+        // Propagate first-seen registrations to peers (not re-propagating gossip).
+        if (added && !body.gossiped) await gossip(manifest, manifestUrl);
         return sendJson(res, 200, { ok: true });
       }
 
