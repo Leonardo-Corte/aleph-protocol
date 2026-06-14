@@ -38,6 +38,7 @@ The monorepo (`packages/*`):
 | `@aleph/client` | the agent-facing SDK (the target) |
 | `@aleph/mcp` | Aleph exposed as an MCP server |
 | `@aleph/cli` | the terminal tool |
+| `@aleph/settle-evm` | the on-chain settlement rail (AlephEscrow escrow via viem) |
 | `@aleph/store` | persistence: async repository interfaces + in-memory / SQLite / Postgres drivers |
 | `@aleph/transport` | internal HTTP helpers (private) |
 

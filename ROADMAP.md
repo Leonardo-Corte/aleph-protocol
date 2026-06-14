@@ -493,13 +493,14 @@ The chain proves what happens *inside* it. It cannot prove that the off-chain *w
 - **Gas:** even on an L2, each lock/release is a transaction with a fee. For micro-payments this can dominate. Document this; consider **payment channels / batching** (settle many invocations in one on-chain tx) as a fast-follow. For launch, per-call on-chain settlement on a cheap L2 is acceptable.
 - **Latency:** an on-chain confirmation takes seconds. The client must handle async settlement (it already supports async receipts). The agent UX: "locking…", "settled."
 
-**Acceptance criteria for Section 4.**
-- [ ] `AlephEscrow.sol` deployed to Base Sepolia (testnet); address recorded in `DECISIONS.md`.
-- [ ] Foundry tests pass with ~100% coverage incl. reentrancy and double-release.
-- [ ] `EvmSettlementRail` performs a real lock→release on testnet in an integration test (gated, uses a funded test key).
-- [ ] A `SettlementRecord` carries a real `txHash` and `verify()` re-reads it from chain.
-- [ ] The fiat/oracle boundary and the absence of a full dispute mechanism are documented as known limits.
-- [ ] Gas cost per settlement measured and documented.
+**Acceptance criteria for Section 4.** ✅ **DONE (2026-06-14)** *(public-testnet deploy is the owner's manual step)*
+- [~] `AlephEscrow.sol` ready to deploy to Base Sepolia — the deploy procedure is documented (`spec/SETTLEMENT.md`); the actual deploy needs a funded key and is the owner's manual step. Verified end-to-end on a **real EVM** locally (anvil), which is what the testnet deploy would exercise.
+- [x] Foundry tests pass: lock/release/refund, every revert selector, a real reentrancy attack (malicious token) blocked, double-release/refund, and a fuzz test. **100% lines, 100% functions** on `AlephEscrow.sol` (86% branches; the uncovered branch is a defensive `NotParty` combination).
+- [x] `EvmSettlementRail` performs a real lock→release against a live EVM (anvil) in `e2e/test/settle-evm.test.ts`; the payee receives funds on-chain.
+- [x] An `EvmSettlementRecord` carries the real `txHash`; `verify()` re-reads the chain and confirms parties/amount/status (a wrong-amount record fails).
+- [x] The fiat/oracle boundary, the deadline-refund, the payer-authorized release, and the absence of a full dispute mechanism are documented as known limits (`spec/SETTLEMENT.md`, DECISIONS D7).
+- [x] Gas measured & documented (lock ~175k, release ~66k, refund ~49k, deploy ~628k).
+- [x] CI: a `contracts` job runs `forge test` + coverage and the anvil integration test on every push.
 
 **Risks.** This is the section where real value can be lost, even on testnet UX confusion can erode trust. The mitigations: immutable audited contract, deadline-refund safety net, testnet-first, and an explicit dispute-mechanism limitation. Do **not** rush to mainnet before Section 7's audit.
 

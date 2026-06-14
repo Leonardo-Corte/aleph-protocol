@@ -161,9 +161,39 @@ audited primitives over clever ones.
 
 ---
 
+## D7 — On-chain settlement: immutable escrow, deadline-refund, deferred dispute/oracle
+
+**Decision.**
+
+- **Contract:** `AlephEscrow` — a per-invocation ERC-20 escrow
+  (lock → release | refund). **Immutable** (no proxy) to keep the audited surface
+  minimal; `ReentrancyGuard` + checks-effects-interactions + `SafeERC20`.
+- **Authorization:** the **payer** releases (acknowledging delivery); a
+  **deadline-refund** protects the payer if a node never delivers; the payee may
+  refund early (decline). A richer dispute mechanism (challenge windows, staked
+  arbiters) is a planned AIP, not a launch blocker — declared as a known limit.
+- **Proof model:** an on-chain `SettlementRecord` is proven by its `txHash`;
+  `EvmSettlementRail.verify()` re-reads the chain (no trusted signer). This is
+  what makes settlement-backed reputation un-forgeable.
+- **Rail:** `@aleph/settle-evm` via **viem**; the in-memory reference rail stays
+  for dev/tests. The fiat on-ramp and off-chain delivery truth are the
+  honestly-open boundaries (see `spec/SETTLEMENT.md`).
+- **Chain:** EVM L2 (Base), **testnet first** (Base Sepolia). Deployment is the
+  owner's manual step (funded key); **mainnet is gated by an external audit**
+  (ROADMAP §7.5).
+
+**Why.** On-chain settlement is the substrate the whole thesis rests on
+(verifiable, no bank, machine-native). Immutability + a tiny surface + a
+deadline safety net make the contract auditable and safe to launch on testnet;
+the open boundaries are documented rather than hidden.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
 - 2026-06-14 — D5 decided (persistence drivers & scope; ROADMAP §2).
 - 2026-06-14 — D6 decided (cryptography: canonicalization, domain separation,
   suites, key management; ROADMAP §3).
+- 2026-06-14 — D7 decided (on-chain settlement: escrow design, deadline-refund,
+  deferred dispute/oracle; ROADMAP §4).
