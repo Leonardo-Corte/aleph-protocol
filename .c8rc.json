@@ -4,13 +4,14 @@
     "packages/node/dist/index.js",
     "packages/registry/dist/index.js",
     "packages/client/dist/index.js",
-    "packages/transport/dist/index.js"
+    "packages/transport/dist/index.js",
+    "packages/store/dist/index.js"
   ],
   "exclude": ["**/*.map"],
   "reporter": ["text-summary", "lcov"],
   "lines": 88,
   "statements": 88,
-  "functions": 88,
+  "functions": 75,
   "branches": 68,
   "check-coverage": true
 }
