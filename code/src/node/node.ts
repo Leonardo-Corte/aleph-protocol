@@ -15,6 +15,7 @@ import { validateSchema, type JsonSchema } from "../core/schema.ts";
 import { err, type AlephError } from "../core/errors.ts";
 import type { Manifest } from "../core/manifest.ts";
 import type { SettlementRail, SettlementRecord } from "../settle/rail.ts";
+import { verifyAttestation, type Attestation } from "../trust/attest.ts";
 import { readJson, sendJson } from "../transport/http.ts";
 
 type CapabilitySpec = {
@@ -37,10 +38,16 @@ export function createNode(opts: NodeOptions) {
   const baseUrl = `http://127.0.0.1:${port}`;
   const nonces = new NonceStore();
 
+  // The node holds the verified attestations written about it. Trust is
+  // computed by the consumer from these raw facts — the node only stores and
+  // serves them; it cannot mint its own score.
+  const reputation: Attestation[] = [];
+
   const manifest: Manifest = {
     v: "aleph/0.1",
     identity: identity.did,
     conformance: opts.rail ? "L3" : "L1",
+    reputation: `${baseUrl}/reputation`,
     capabilities: Object.keys(opts.capabilities).map((key) => ({
       key,
       risk: opts.capabilities[key].risk ?? "low",
@@ -90,6 +97,25 @@ export function createNode(opts: NodeOptions) {
     try {
       if (req.method === "GET" && req.url === "/manifest") {
         return sendJson(res, 200, manifest);
+      }
+      // Serve the raw attestation set (the consumer computes its own trust).
+      if (req.method === "GET" && req.url === "/reputation") {
+        return sendJson(res, 200, { subject: identity.did, attestations: reputation });
+      }
+      // Receive an attestation written about this node; store only if it is
+      // backed by a valid, released settlement to this node (anti-Sybil).
+      if (req.method === "POST" && req.url === "/attest") {
+        const att = (await readJson(req)) as unknown as Attestation;
+        const av = verifyAttestation(att);
+        if (!av.ok) return sendJson(res, 400, { error: err("ATTEST_INVALID", av.reason ?? "invalid") });
+        if (att.subject !== identity.did) {
+          return sendJson(res, 400, { error: err("ATTEST_INVALID", "not about this node") });
+        }
+        // One settlement can back at most one stored attestation.
+        if (!reputation.some((a) => a.settlement.escrowId === att.settlement.escrowId)) {
+          reputation.push(att);
+        }
+        return sendJson(res, 200, { ok: true });
       }
       if (req.method === "POST" && req.url === "/aleph") {
         const env = (await readJson(req)) as unknown as Envelope;

@@ -9,6 +9,7 @@ import type { Identity } from "../core/identity.ts";
 import type { Grant } from "../core/grant.ts";
 import type { Manifest } from "../core/manifest.ts";
 import { verifySettlement, type SettlementRail, type SettlementRecord } from "../settle/rail.ts";
+import { createAttestation, computeTrust, type Attestation } from "../trust/attest.ts";
 
 export type Pointer = { did: string; manifest: string; summary: string; reputation?: string };
 
@@ -93,4 +94,62 @@ export async function invoke(opts: {
   }
 
   return { result: receipt.body.result, outcome: receipt.body.outcome, receipt, settlement };
+}
+
+// TRUST (write) — after a settled interaction, attest to the counterparty.
+// The attestation is backed by the settlement, so it cannot be forged for free.
+export async function attest(opts: {
+  agent: Identity;
+  subjectDid: string;
+  reputationUrl: string;
+  settlement: SettlementRecord;
+  rating: number;
+  claim?: string;
+}): Promise<Attestation> {
+  const att = createAttestation(opts.agent, {
+    subject: opts.subjectDid,
+    settlement: opts.settlement,
+    rating: opts.rating,
+    claim: opts.claim,
+  });
+  // Deliver it to the subject's reputation store (derive base from the pointer).
+  const base = opts.reputationUrl.replace(/\/reputation$/, "");
+  await fetch(base + "/attest", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(att),
+  });
+  return att;
+}
+
+// TRUST (read) — fetch a node's raw attestations and compute trust locally.
+export async function fetchReputation(
+  reputationUrl: string,
+): Promise<{ attestations: Attestation[]; trust: ReturnType<typeof computeTrust> }> {
+  const res = await fetch(reputationUrl);
+  const json = (await res.json()) as { attestations?: Attestation[] };
+  const attestations = json.attestations ?? [];
+  return { attestations, trust: computeTrust(attestations) };
+}
+
+// FIND + TRUST — resolve candidates and rank them by consumer-computed trust.
+// (A node with no reputation pointer scores 0 but is still listed.)
+export async function resolveRanked(
+  registryUrl: string,
+  capability: string,
+  agent: Identity,
+): Promise<Array<Pointer & { trust: number; attestations: number }>> {
+  const pointers = await resolve(registryUrl, capability, agent);
+  const ranked = await Promise.all(
+    pointers.map(async (p) => {
+      if (!p.reputation) return { ...p, trust: 0, attestations: 0 };
+      try {
+        const { trust } = await fetchReputation(p.reputation);
+        return { ...p, trust: trust.score, attestations: trust.count };
+      } catch {
+        return { ...p, trust: 0, attestations: 0 };
+      }
+    }),
+  );
+  return ranked.sort((a, b) => b.trust - a.trust);
 }
