@@ -96,13 +96,18 @@ class PgRegistryStore implements RegistryStore {
 
   async upsertNode(manifest: Manifest, manifestUrl: string): Promise<boolean> {
     const seq = Date.now();
-    const before = await this.sql`SELECT 1 FROM nodes WHERE did = ${manifest.identity}`;
-    const firstSeen = before.length === 0;
-    await this.sql`
+    // Determine first-seen ATOMICALLY from the insert itself — never via a prior
+    // SELECT, which races under real concurrency (parallel callers all read
+    // "not exists" before any commits). `xmax = 0` is true only for a freshly
+    // inserted row, false for the ON CONFLICT update path — so exactly one of N
+    // concurrent upserts reports first-seen.
+    const rows = await this.sql`
       INSERT INTO nodes (did, manifest_url, manifest_json, reputation_url)
       VALUES (${manifest.identity}, ${manifestUrl}, ${this.sql.json(manifest)}, ${manifest.reputation ?? null})
       ON CONFLICT (did) DO UPDATE SET manifest_url = EXCLUDED.manifest_url,
-        manifest_json = EXCLUDED.manifest_json, reputation_url = EXCLUDED.reputation_url, last_seen = now()`;
+        manifest_json = EXCLUDED.manifest_json, reputation_url = EXCLUDED.reputation_url, last_seen = now()
+      RETURNING (xmax = 0) AS inserted`;
+    const firstSeen = rows[0]?.inserted === true;
     for (const cap of manifest.capabilities) {
       await this.sql`
         INSERT INTO node_capabilities (did, capability, risk, seq)
@@ -111,6 +116,8 @@ class PgRegistryStore implements RegistryStore {
     }
     return firstSeen;
   }
+  // (the SELECT-then-insert race above was caught by the Postgres concurrency
+  // test in CI — exactly the kind of bug serialized in-memory/SQLite hide.)
 
   async resolveByCapability(capability: string, limit: number): Promise<Pointer[]> {
     const rows = await this.sql`
