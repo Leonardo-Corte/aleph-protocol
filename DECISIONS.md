@@ -129,7 +129,41 @@ concurrency and forged input.
 
 ---
 
+## D6 — Cryptography: RFC 8785 canonicalization, domain-separated signing, Ed25519 + secp256k1
+
+**Decision.**
+
+- **Canonicalization:** signatures are computed over **RFC 8785 (JCS)** canonical
+  bytes — the permanent, language-independent definition of "what gets signed".
+  Verified against the official JCS vectors and reproduced by an independent
+  Python implementation in CI.
+- **Domain separation:** the signed message is `<domain>\n<RFC8785(object)>`,
+  where each signed object kind has a distinct domain tag (`aleph/0.1:envelope`,
+  `:grant`, `:attestation`, `:settlement`, `:manifest`). A signature for one kind
+  cannot verify as another.
+- **Signature suites:** **Ed25519** (default, Node-native) and **secp256k1**
+  (`@noble/curves`, ECDSA over SHA-256 of the message). The suite is encoded in
+  the did:key multicodec prefix; verification is dispatched from the signer's DID
+  (`verifyByDid`). `@noble/curves`/`@noble/hashes` are the audited pure-JS
+  standard; hand-rolling EC crypto would be less safe.
+- **Identity:** `did:key` (both suites) and `did:web` (HTTPS + TTL cache).
+  **`did:pkh` is deferred to §4**, where Ethereum public-key recovery is handled
+  by the chain tooling rather than re-implemented in a security-critical layer.
+- **Key management:** private keys are sealed at rest with **scrypt → AES-256-GCM**
+  (`sealIdentity`/`unsealIdentity`); a wrong passphrase or any tampering fails the
+  GCM tag. Rotation uses a **KeyRing** of validity windows: a signature verifies
+  against the key valid at the message's timestamp.
+
+**Why.** The waist is near-frozen (ROADMAP §0 of the protocol), so its crypto must
+be right and interoperable from the start. RFC 8785 + domain separation + a
+cross-language proof make the signed bytes unambiguous across SDKs. Standard,
+audited primitives over clever ones.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
 - 2026-06-14 — D5 decided (persistence drivers & scope; ROADMAP §2).
+- 2026-06-14 — D6 decided (cryptography: canonicalization, domain separation,
+  suites, key management; ROADMAP §3).

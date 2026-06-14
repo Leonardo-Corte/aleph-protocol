@@ -67,6 +67,21 @@ jobs:
       - name: Coverage (fails below thresholds)
         run: pnpm test:coverage
 
+  cross-language:
+    name: cross-language conformance (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cryptography
+      # An independent Python implementation must reproduce the RFC 8785 vectors
+      # byte-for-byte and verify a TS-produced Ed25519 signature — the proof that
+      # the protocol is language-independent, not "whatever the TS code does".
+      - name: Python conformance
+        run: python conformance/python/run_vectors.py
+
   postgres:
     name: store contract (postgres)
     runs-on: ubuntu-latest

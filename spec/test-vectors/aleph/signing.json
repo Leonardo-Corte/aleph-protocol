@@ -1,0 +1,19 @@
+{
+  "description": "Aleph domain-separated Ed25519 signing vector. signed message = domain + '\\n' + RFC8785(object).",
+  "did": "did:key:z6Mkvf3xpCeTVAobDdWWmLEUTbH4tDWMUfkAAvWeb9bMq4p8",
+  "suite": "ed25519",
+  "publicKeyHex": "f0c04c891ed4b9b477ebbab78f607638a8ed6d939b4e127a5151735da5b67819",
+  "domain": "aleph/0.1:envelope",
+  "object": {
+    "capability": "math.add",
+    "input": {
+      "a": 2,
+      "b": 3
+    },
+    "n": 1e+30,
+    "s": "€ unicode ✓"
+  },
+  "canonical": "{\"capability\":\"math.add\",\"input\":{\"a\":2,\"b\":3},\"n\":1e+30,\"s\":\"€ unicode ✓\"}",
+  "signedMessage": "aleph/0.1:envelope\n{\"capability\":\"math.add\",\"input\":{\"a\":2,\"b\":3},\"n\":1e+30,\"s\":\"€ unicode ✓\"}",
+  "signatureHex": "572c5673c6e52a1a81a9ec1a6e6294f56ae24caf47ce31a9ddc0ab60770a5f9a39b9e2069cf71df95809e03d33e749d119fc67f97907253fc654306f69be2d0e"
+}
