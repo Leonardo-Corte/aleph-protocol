@@ -31,6 +31,8 @@ graph LR
 | 1 | [`foundations.md`](foundations.md) | **Start here.** From the telegraph (1840s) to ARPANET (1969) to the web eras — what a network *is*, how the first ones were made, the lessons, and the web we want to remake. With diagrams. | Anyone. No prior knowledge needed. |
 | 2 | [`aleph-protocol-paper.md`](aleph-protocol-paper.md) | The foundational paper — problem, design principles, the five verbs in depth, the trust loop, open problems, relationship to MCP/A2A/DID/web3, build order. *The why.* | Understanding the design. |
 | 3 | [`aleph-manifest-spec.md`](aleph-manifest-spec.md) | The normative wire spec — the Envelope, Manifest, Grant, and five message types, field by field (RFC-2119). *The how.* | Implementers. |
+| 4 | [`ROADMAP.md`](ROADMAP.md) | **The production development roadmap** — the exhaustive, section-by-section plan to take Aleph from the tested prototype to a network released to the world (engineering, persistence, hardened crypto, on-chain settlement, security/audit, deployment, SDKs, launch). With code, acceptance criteria, and a timeline. | Building it for real. |
+| — | [`code/`](code/) | The running reference implementation — all five verbs, 27 tests. | Run it now. |
 
 ---
 
