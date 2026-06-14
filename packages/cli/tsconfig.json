@@ -7,7 +7,8 @@
       "@aleph/transport": ["../transport/src/index.ts"],
       "@aleph/client": ["../client/src/index.ts"],
       "@aleph/node": ["../node/src/index.ts"],
-      "@aleph/registry": ["../registry/src/index.ts"]
+      "@aleph/registry": ["../registry/src/index.ts"],
+      "@aleph/store": ["../store/src/index.ts"]
     }
   },
   "include": ["src"]
