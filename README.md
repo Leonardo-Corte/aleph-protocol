@@ -2,7 +2,7 @@
 
 > **A thin-waist protocol for an agent-native web** — how machines **find, trust, act, pay, and prove**, without a human in the loop and without a central authority gatekeeping any of them.
 
-**Status:** Working draft v0.1 · foundational documents **+ a running v0 reference implementation** in [`code/`](code/) — the five verbs work end to end (`cd code && node src/demo/run.ts`).
+**Status:** Working draft · foundational documents **+ a running reference implementation** in [`code/`](code/) where **all five verbs work end to end**, with 27 tests (`cd code && node src/demo/run.ts`). Includes settlement (PAY), settlement-backed reputation (TRUST, anti-Sybil), receipt chaining (PROVE), agentic composition, a hardened waist, `did:web`, registry federation, a CLI, and native agent use over MCP.
 *Aleph is a working codename — the name is an evolvable layer, not part of the protocol's frozen core, so it may change. (An unrelated project, Aleph.im, uses the name in the storage space.)*
 
 ---
@@ -109,6 +109,8 @@ The **registry** is the multiplier of everything else and therefore the first co
 
 ## Status & contributing
 
-This is an early working draft. The foundational documents are complete, and a **running v0 reference implementation** lives in [`code/`](code/): identity (`did:key`), signed envelopes, bounded grants, a registry, signed receipts, and native agent use over MCP — all tested. The next increment is the payment (`SETTLE`) and settlement-backed reputation (`ATTEST`) layer. It is deliberately imperfect and expected to change: **when reality contradicts a page, the page changes.** Issues, critiques, and precise attacks are worth more than agreement — a convergent objection from an opposite premise is how this gets stronger.
+The foundational documents are complete, and a **running reference implementation** lives in [`code/`](code/) with **all five verbs working end to end** (27 tests): identity (`did:key`/`did:web`), signed envelopes with a hardened waist (replay/skew/version), bounded grants, typed schema validation, escrow settlement (atomic release / refund-on-failure), settlement-backed attestations (anti-Sybil) with consumer-computed trust, reputation-ranked discovery, receipt chaining, agentic composition across nodes, registry federation, a capability vocabulary, a CLI, and native agent use over MCP.
+
+The honestly-open frontier (see the paper, §8): a real on-chain settlement/payment rail to replace the in-memory one, the fiat/oracle reserve boundary, and persistent/federated registries at scale. It is deliberately imperfect and expected to change: **when reality contradicts a page, the page changes.** Issues, critiques, and precise attacks are worth more than agreement — a convergent objection from an opposite premise is how this gets stronger.
 
 *License: TBD. Lineage: the agentic-web direction is developed in dialogue with the Operative Ecosystem (ESO) corpus.*

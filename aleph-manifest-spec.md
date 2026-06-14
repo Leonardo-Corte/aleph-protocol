@@ -4,6 +4,7 @@
 
 **Status:** Normative working draft. Companion to the explanatory paper [`aleph-protocol-paper.md`](aleph-protocol-paper.md).
 **Audience:** Implementers of Aleph nodes, agents, and registries.
+**Implementation:** All five message types, the Manifest, the Grant, the receive-guard (replay/skew/version), schema validation, escrow settlement, settlement-backed attestations, and receipt chaining are implemented and tested in [`code/`](code/). The in-memory settlement rail and the fiat boundary are the documented next increments.
 
 > The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** in this document are to be interpreted as described in RFC 2119. A conforming implementation is one that satisfies every **MUST** in §2 (the thin waist). Everything else is optional and layered.
 
