@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@aleph/core": ["../core/src/index.ts"],
+      "@aleph/transport": ["../transport/src/index.ts"],
+      "@aleph/client": ["../client/src/index.ts"],
+      "@aleph/node": ["../node/src/index.ts"],
+      "@aleph/registry": ["../registry/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

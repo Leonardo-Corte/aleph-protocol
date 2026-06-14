@@ -1,0 +1,38 @@
+{
+  "name": "aleph-protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Aleph Protocol — a thin-waist protocol for an agent-native web. Monorepo root.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Leonardo Corte and the Aleph Protocol contributors",
+  "homepage": "https://github.com/Leonardo-Corte/aleph-protocol",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Leonardo-Corte/aleph-protocol.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test:coverage",
+    "clean": "pnpm -r exec rm -rf dist",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0",
+    "@types/node": "^22.10.0",
+    "prettier": "^3.4.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0"
+  }
+}

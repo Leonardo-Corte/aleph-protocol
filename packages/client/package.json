@@ -1,0 +1,25 @@
+{
+  "name": "@aleph/client",
+  "version": "0.2.0",
+  "description": "Aleph Protocol client — the agent-facing SDK: resolve, rank by trust, invoke, pay, verify, compose. THE target.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Leonardo Corte and the Aleph Protocol contributors",
+  "repository": { "type": "git", "url": "git+https://github.com/Leonardo-Corte/aleph-protocol.git", "directory": "packages/client" },
+  "engines": { "node": ">=22" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist"],
+  "sideEffects": false,
+  "publishConfig": { "access": "public", "provenance": true },
+  "dependencies": { "@aleph/core": "workspace:*" },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "true",
+    "test:coverage": "true",
+    "clean": "rm -rf dist"
+  }
+}

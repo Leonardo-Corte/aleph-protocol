@@ -1,0 +1,25 @@
+{
+  "name": "@aleph/core",
+  "version": "0.2.0",
+  "description": "Aleph Protocol core — the thin waist: identity, envelopes, grants, manifests, schema, vocabulary, settlement interface, trust. No servers.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Leonardo Corte and the Aleph Protocol contributors",
+  "homepage": "https://github.com/Leonardo-Corte/aleph-protocol/tree/main/packages/core",
+  "repository": { "type": "git", "url": "git+https://github.com/Leonardo-Corte/aleph-protocol.git", "directory": "packages/core" },
+  "engines": { "node": ">=22" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist"],
+  "sideEffects": false,
+  "publishConfig": { "access": "public", "provenance": true },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "true",
+    "test:coverage": "c8 --100 false node --test test/",
+    "clean": "rm -rf dist"
+  }
+}

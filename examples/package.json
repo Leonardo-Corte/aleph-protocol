@@ -1,0 +1,24 @@
+{
+  "name": "@aleph/examples",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runnable Aleph examples.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "demo": "node src/run.ts",
+    "network": "node src/network.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "true",
+    "test:coverage": "true",
+    "build": "true",
+    "clean": "true"
+  },
+  "dependencies": {
+    "@aleph/core": "workspace:*",
+    "@aleph/node": "workspace:*",
+    "@aleph/registry": "workspace:*",
+    "@aleph/client": "workspace:*"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@aleph/core": ["../packages/core/src/index.ts"],
+      "@aleph/node": ["../packages/node/src/index.ts"],
+      "@aleph/registry": ["../packages/registry/src/index.ts"],
+      "@aleph/client": ["../packages/client/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

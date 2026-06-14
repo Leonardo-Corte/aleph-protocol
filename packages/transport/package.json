@@ -1,0 +1,21 @@
+{
+  "name": "@aleph/transport",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Internal: tiny node:http helpers shared by the node and registry runtimes.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "true",
+    "test:coverage": "true",
+    "clean": "rm -rf dist"
+  }
+}
