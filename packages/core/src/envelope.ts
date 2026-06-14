@@ -1,10 +1,11 @@
 // The Envelope: the thin universal waist. Every Aleph message is a signed,
 // addressed, stateless Envelope between two DIDs, carrying one of five types.
-// This is the "IP packet" of the agentic web.
+// This is the "IP packet" of the agentic web. Signatures are domain-separated
+// (an envelope signature cannot be reused as a grant/attestation/…).
 
-import { sign, verify, randomUUID } from "node:crypto";
-import { canonicalize } from "./canonical";
+import { randomUUID } from "node:crypto";
 import { publicKeyFromDid, type Identity } from "./identity";
+import { DOMAIN, signEd25519, verifyEd25519 } from "./signing";
 
 export const PROTOCOL_VERSION = "aleph/0.1";
 
@@ -25,7 +26,7 @@ export function createEnvelope(
   params: { from: string; to: string; type: EnvelopeType; body: Record<string, unknown> },
   privateKey: Identity["privateKey"],
 ): Envelope {
-  // Build the unsigned Envelope, sign its canonical form, then attach the sig.
+  // Build the unsigned Envelope, sign its domain-separated canonical form.
   const env: Envelope = {
     v: PROTOCOL_VERSION,
     from: params.from,
@@ -35,8 +36,7 @@ export function createEnvelope(
     ts: Date.now(),
     body: params.body,
   };
-  const signature = sign(null, Buffer.from(canonicalize(env)), privateKey);
-  env.sig = signature.toString("base64url");
+  env.sig = signEd25519(DOMAIN.envelope, env, privateKey);
   return env;
 }
 
@@ -46,7 +46,7 @@ export function verifyEnvelope(env: Envelope): { ok: boolean; reason?: string } 
   const { sig, ...unsigned } = env;
   try {
     const pub = publicKeyFromDid(env.from);
-    const ok = verify(null, Buffer.from(canonicalize(unsigned)), pub, Buffer.from(sig, "base64url"));
+    const ok = verifyEd25519(DOMAIN.envelope, unsigned, sig, pub);
     return ok ? { ok: true } : { ok: false, reason: "bad signature" };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };

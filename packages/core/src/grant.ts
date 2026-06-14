@@ -3,10 +3,9 @@
 // verifies it before acting. This is what makes an agent *safe to permit*:
 // not "the agent has my keys" but "the agent may do exactly this much".
 
-import { sign, verify } from "node:crypto";
-import { canonicalize } from "./canonical";
 import { PROTOCOL_VERSION } from "./envelope";
 import { publicKeyFromDid, type Identity } from "./identity";
+import { DOMAIN, signEd25519, verifyEd25519 } from "./signing";
 
 export interface GrantScope {
   capability: string;
@@ -35,7 +34,7 @@ export function createGrant(
     not_after: params.not_after,
     delegable: params.delegable ?? false,
   };
-  grant.sig = sign(null, Buffer.from(canonicalize(grant)), issuerPrivateKey).toString("base64url");
+  grant.sig = signEd25519(DOMAIN.grant, grant, issuerPrivateKey);
   return grant;
 }
 
@@ -49,7 +48,7 @@ export function verifyGrant(
   const { sig, ...unsigned } = grant;
   try {
     const pub = publicKeyFromDid(grant.issuer);
-    const sigOk = verify(null, Buffer.from(canonicalize(unsigned)), pub, Buffer.from(sig, "base64url"));
+    const sigOk = verifyEd25519(DOMAIN.grant, unsigned, sig, pub);
     if (!sigOk) return { ok: false, reason: "bad grant signature" };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };

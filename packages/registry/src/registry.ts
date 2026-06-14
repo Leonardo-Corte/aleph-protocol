@@ -7,7 +7,7 @@
 import http from "node:http";
 import type { Envelope, NonceChecker } from "@aleph/core";
 import { NonceStore, verifyReceived } from "@aleph/core";
-import { validateManifest, type Manifest } from "@aleph/core";
+import { verifyManifest, type Manifest } from "@aleph/core";
 import { err } from "@aleph/core";
 import { InMemoryRegistryStore, type RegistryStore } from "@aleph/store";
 import { readJson, sendJson, asyncHandler } from "@aleph/transport";
@@ -49,7 +49,10 @@ export function createRegistry(opts: {
           const body = await readJson(req);
           const manifest = body.manifest as Manifest;
           const manifestUrl = body.manifestUrl as string;
-          const v = validateManifest(manifest);
+          // Re-verify the node's self-signature: a registry is a replicator, not
+          // an authority — it indexes only Manifests that are authentic and
+          // authored by the claimed DID, regardless of who submitted them.
+          const v = verifyManifest(manifest);
           if (!v.ok) {
             sendJson(res, 400, { error: err("ENVELOPE_INVALID", v.reason ?? "bad manifest") });
             return;

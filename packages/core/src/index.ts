@@ -9,6 +9,7 @@ export * from "./manifest";
 export * from "./replay";
 export * from "./schema";
 export * from "./canonical";
+export * from "./signing";
 export * from "./hash";
 export * from "./errors";
 export * from "./resolver";

@@ -7,10 +7,9 @@
 // agent downloads raw attestations, verifies each, discards the unbacked, and
 // weights by settled value with its own policy.
 
-import { sign, verify } from "node:crypto";
-import { canonicalize } from "../canonical";
 import { publicKeyFromDid, type Identity } from "../identity";
 import { verifySettlement, type SettlementRecord } from "../settle/rail";
+import { DOMAIN, signEd25519, verifyEd25519 } from "../signing";
 
 export interface Attestation {
   v: string;
@@ -36,7 +35,7 @@ export function createAttestation(
     claim: params.claim,
     ts: Date.now(),
   };
-  const sig = sign(null, Buffer.from(canonicalize(base)), issuer.privateKey).toString("base64url");
+  const sig = signEd25519(DOMAIN.attestation, base, issuer.privateKey);
   return { ...base, sig };
 }
 
@@ -46,7 +45,7 @@ export function verifyAttestation(att: Attestation): { ok: boolean; reason?: str
   const { sig, ...base } = att;
   try {
     const pub = publicKeyFromDid(att.issued_by);
-    if (!verify(null, Buffer.from(canonicalize(base)), pub, Buffer.from(sig, "base64url"))) {
+    if (!verifyEd25519(DOMAIN.attestation, base, sig, pub)) {
       return { ok: false, reason: "bad attestation signature" };
     }
   } catch (e) {

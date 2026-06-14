@@ -2,16 +2,17 @@
 // must enforce — replay, clock skew, unsupported version, and schema validation.
 
 import assert from "node:assert/strict";
-import { sign, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { generateIdentity, type Identity } from "@aleph/core";
-import { canonicalize } from "@aleph/core";
+import { DOMAIN, signEd25519 } from "@aleph/core";
 import { NonceStore, verifyReceived } from "@aleph/core";
 import { validateSchema, type JsonSchema } from "@aleph/core";
 import { createEnvelope, type Envelope } from "@aleph/core";
 import { createNode } from "@aleph/node";
 
-// Sign an Envelope with arbitrary fields (so we can backdate ts, bump version, etc).
+// Sign an Envelope with arbitrary fields (so we can backdate ts, bump version, etc),
+// using the same domain-separated signing the protocol uses.
 function signEnvelope(id: Identity, partial: Partial<Envelope>): Envelope {
   const base = {
     v: "aleph/0.1",
@@ -23,7 +24,7 @@ function signEnvelope(id: Identity, partial: Partial<Envelope>): Envelope {
     body: {},
     ...partial,
   };
-  const sig = sign(null, Buffer.from(canonicalize(base)), id.privateKey).toString("base64url");
+  const sig = signEd25519(DOMAIN.envelope, base, id.privateKey);
   return { ...base, sig };
 }
 

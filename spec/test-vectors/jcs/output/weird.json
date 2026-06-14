@@ -1,11 +1,1 @@
-{
-  "\n": "Newline",
-  "\r": "Carriage Return",
-  "1": "One",
-  "</script>": "Browser Challenge",
-  "": "Control",
-  "ö": "Latin Small Letter O With Diaeresis",
-  "€": "Euro Sign",
-  "😂": "Smiley",
-  "דּ": "Hebrew Letter Dalet With Dagesh"
-}
+{"\n":"Newline","\r":"Carriage Return","1":"One","</script>":"Browser Challenge","":"Control","ö":"Latin Small Letter O With Diaeresis","€":"Euro Sign","😂":"Smiley","דּ":"Hebrew Letter Dalet With Dagesh"}

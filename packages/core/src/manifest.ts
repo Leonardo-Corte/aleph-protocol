@@ -1,7 +1,11 @@
 // The Manifest: a node's machine-readable self-declaration — the atomic unit
 // that makes a node a node. Carries identity, capabilities, terms, a
-// reputation pointer, and endpoints. Here we define the type and a structural
-// validator (the minimal "is this a node?" check).
+// reputation pointer, and endpoints. A node signs its own Manifest, so it is
+// verifiable independent of where it is hosted (a registry or agent can confirm
+// it is authentic and unaltered, and authored by the claimed DID).
+
+import { publicKeyFromDid, type Identity } from "./identity";
+import { DOMAIN, signEd25519, verifyEd25519 } from "./signing";
 
 export interface Capability {
   key: string;
@@ -20,6 +24,31 @@ export interface Manifest {
   reputation?: string;
   endpoint: string[];
   ext?: Record<string, unknown>;
+  sig?: string;
+}
+
+// Sign a Manifest with the node's own key. The `identity` DID must match the
+// signing key (a node can only author its own Manifest).
+export function signManifest(manifest: Omit<Manifest, "sig">, identity: Identity): Manifest {
+  if (manifest.identity !== identity.did) {
+    throw new Error("manifest.identity does not match the signing key");
+  }
+  return { ...manifest, sig: signEd25519(DOMAIN.manifest, manifest, identity.privateKey) };
+}
+
+// Verify a Manifest's self-signature against its declared identity DID.
+export function verifyManifest(manifest: Manifest): { ok: boolean; reason?: string } {
+  if (!manifest.sig) return { ok: false, reason: "manifest is unsigned" };
+  const structural = validateManifest(manifest);
+  if (!structural.ok) return structural;
+  const { sig, ...unsigned } = manifest;
+  try {
+    const pub = publicKeyFromDid(manifest.identity);
+    const ok = verifyEd25519(DOMAIN.manifest, unsigned, sig, pub);
+    return ok ? { ok: true } : { ok: false, reason: "bad manifest signature" };
+  } catch (e) {
+    return { ok: false, reason: (e as Error).message };
+  }
 }
 
 export function validateManifest(m: unknown): { ok: boolean; reason?: string } {

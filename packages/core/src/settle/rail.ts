@@ -7,9 +7,8 @@
 // guardrail that keeps it from being unauthorized e-money); while still locked
 // in escrow it can be refunded on failure.
 
-import { sign, verify } from "node:crypto";
-import { canonicalize } from "../canonical";
 import { generateIdentity, publicKeyFromDid, type Identity } from "../identity";
+import { DOMAIN, signEd25519, verifyEd25519 } from "../signing";
 
 export type EscrowStatus = "locked" | "released" | "refunded";
 
@@ -120,7 +119,7 @@ export class SettlementRail {
       rail: this.did,
       ts: Date.now(),
     };
-    const sig = sign(null, Buffer.from(canonicalize(base)), this.identity.privateKey).toString("base64url");
+    const sig = signEd25519(DOMAIN.settlement, base, this.identity.privateKey);
     return { ...base, sig };
   }
 }
@@ -130,7 +129,7 @@ export function verifySettlement(rec: SettlementRecord): { ok: boolean; reason?:
   const { sig, ...base } = rec;
   try {
     const pub = publicKeyFromDid(rec.rail);
-    const ok = verify(null, Buffer.from(canonicalize(base)), pub, Buffer.from(sig, "base64url"));
+    const ok = verifyEd25519(DOMAIN.settlement, base, sig, pub);
     return ok ? { ok: true } : { ok: false, reason: "bad settlement signature" };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };

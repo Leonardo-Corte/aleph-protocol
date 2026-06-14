@@ -14,6 +14,7 @@ import { NonceStore, verifyReceived } from "@aleph/core";
 import { verifyGrant, type Grant } from "@aleph/core";
 import { hashObject } from "@aleph/core";
 import { validateSchema, type JsonSchema } from "@aleph/core";
+import { signManifest } from "@aleph/core";
 import { err, type AlephError } from "@aleph/core";
 import { verifyAttestation, type Attestation } from "@aleph/core";
 import { InMemoryReputationStore, type ReputationStore, type SettlementStore } from "@aleph/store";
@@ -50,7 +51,7 @@ export function createNode(opts: NodeOptions) {
   const reputation: ReputationStore = opts.reputationStore ?? new InMemoryReputationStore();
   const settlements: SettlementStore | undefined = opts.settlementStore;
 
-  const manifest: Manifest = {
+  const unsignedManifest: Omit<Manifest, "sig"> = {
     v: "aleph/0.1",
     identity: identity.did,
     conformance: opts.rail ? "L3" : "L1",
@@ -68,6 +69,8 @@ export function createNode(opts: NodeOptions) {
     },
     endpoint: [`${baseUrl}/aleph`],
   };
+  // A node signs its own Manifest so it is verifiable wherever it is hosted.
+  const manifest: Manifest = signManifest(unsignedManifest, identity);
 
   function sendReceipt(
     res: ServerResponse,
