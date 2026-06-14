@@ -138,6 +138,8 @@ jobs:
       - run: pnpm -r build
       - name: On-chain settlement integration (anvil)
         run: |
+          # The test looks for anvil at ~/.foundry/bin/anvil; link it there only
+          # if it isn't already (foundry-toolchain may place it there directly).
           mkdir -p "$HOME/.foundry/bin"
-          ln -sf "$(which anvil)" "$HOME/.foundry/bin/anvil"
+          if [ ! -e "$HOME/.foundry/bin/anvil" ]; then ln -s "$(which anvil)" "$HOME/.foundry/bin/anvil"; fi
           node --test "e2e/test/settle-evm.test.ts"
