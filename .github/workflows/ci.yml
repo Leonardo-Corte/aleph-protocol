@@ -67,6 +67,37 @@ jobs:
       - name: Coverage (fails below thresholds)
         run: pnpm test:coverage
 
+  postgres:
+    name: store contract (postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: aleph
+          POSTGRES_DB: aleph_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:aleph@127.0.0.1:5432/aleph_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      # Runs the SAME store contract suite against a real Postgres (not skipped).
+      - name: Postgres store contract
+        run: node --test "e2e/test/store-postgres.test.ts"
+
   # Placeholder for future Solidity (Foundry) tests — Section 4 of the roadmap.
   # contracts:
   #   runs-on: ubuntu-latest

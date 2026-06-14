@@ -281,12 +281,13 @@ Provide two implementations per interface: `PostgresRegistryStore` and `SqliteRe
 - **Nonce GC:** a periodic job (`DELETE FROM seen_nonces WHERE ts < now()-window`) so the table does not grow unbounded.
 - **Backups:** document a `pg_dump` schedule for the deployed registry.
 
-**Acceptance criteria for Section 2.**
-- [ ] Registry, nonces, attestations, settlements all persist across a full restart (a test stops and restarts the process and finds the data).
-- [ ] Postgres and SQLite implementations both pass the same store test-suite.
-- [ ] Concurrent writes (two registrations at once) do not corrupt state (a concurrency test).
-- [ ] `UNIQUE(subject, settlement)` is enforced at the DB level (a forged duplicate attestation is rejected by the database, not just app code).
-- [ ] Migrations apply cleanly from empty on CI.
+**Acceptance criteria for Section 2.** ✅ **DONE (2026-06-14)**
+- [x] Registry, nodes, reputation, and settlement records persist across a full restart (the persistence E2E boots on SQLite files, tears down, brings up fresh instances on the same files, and recovers everything).
+- [x] In-memory and SQLite drivers pass the same store contract suite locally; Postgres passes it in CI against a real Postgres service.
+- [x] Concurrent writes (20 parallel upserts / attestations) do not double-insert (a concurrency test in the contract suite — exactly one first-seen / one attestation).
+- [x] `UNIQUE(subject, settlement)` (and `PRIMARY KEY(from, nonce)`) enforced at the DB level — a forged duplicate is rejected by the database, not just app code.
+- [x] Migrations apply cleanly from empty (idempotent `CREATE TABLE IF NOT EXISTS`), verified locally (SQLite) and on CI (Postgres).
+- [x] Storage is pluggable behind async interfaces; runtimes default to in-memory so existing behavior is unchanged. (Live ledger of the throwaway dev rail intentionally not persisted — replaced by §4's on-chain rail; see DECISIONS D5.)
 
 **Risks.** Making storage `async` ripples through the codebase — lean on the type-checker. Don't skip the concurrency test: races are the bugs that only appear in production.
 

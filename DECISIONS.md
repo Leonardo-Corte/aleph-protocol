@@ -103,6 +103,33 @@ a source-available license) — if so, record the change and reason below.
 
 ---
 
+## D5 — Persistence: **async repository interfaces; SQLite (node:sqlite) + Postgres (postgres.js)**
+
+**Decision.** Protocol runtimes depend only on **async repository interfaces**
+(`RegistryStore`, `NonceStore`, `ReputationStore`, `SettlementStore`) in
+`@aleph/store`, never on a concrete database. Three interchangeable drivers:
+**in-memory** (dev/tests, the default), **SQLite** via Node's built-in
+`node:sqlite` (operators on a laptop / embedded — zero native deps), and
+**Postgres** via `postgres.js` (the deployed registry — JSONB, real concurrency;
+an optional, lazily-loaded dependency). One reusable contract test suite every
+driver passes identically.
+
+**Scope.** Persisted: the registry (nodes), nonces (replay protection across
+restarts), reputation (attestations, with DB-level `UNIQUE(subject, settlement)`
+anti-Sybil), and **settlement records** (durable signed history). *Not* persisted:
+the in-memory dev rail's live balance/escrow ledger — that is throwaway code the
+on-chain rail (D2 / ROADMAP §4) replaces; persisting it would be wasted work.
+
+**Why.** `node:sqlite` gives real persistence with no native compilation, ideal
+for the "run your own node" story. Postgres is the standard for the deployed
+registry. The async interface lets one codebase serve both, and keeps the door
+open for the on-chain settlement store. Invariants are enforced in the database
+(unique keys, primary keys), not just in app code — so they hold under
+concurrency and forged input.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
+- 2026-06-14 — D5 decided (persistence drivers & scope; ROADMAP §2).
