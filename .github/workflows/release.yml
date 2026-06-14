@@ -1,8 +1,10 @@
 name: Release
 
+# Manual until npm publishing is enabled at launch (Roadmap §13). To activate
+# automated releases: add the NPM_TOKEN secret, allow Actions to create PRs in
+# repo settings, then switch this trigger back to `push: { branches: [main] }`.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency: release-${{ github.ref }}
 
@@ -15,9 +17,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
