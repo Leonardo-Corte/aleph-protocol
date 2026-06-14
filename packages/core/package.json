@@ -37,5 +37,9 @@
     "test": "true",
     "test:coverage": "c8 --100 false node --test test/",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0"
   }
 }

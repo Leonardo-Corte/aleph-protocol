@@ -7,8 +7,8 @@
 // guardrail that keeps it from being unauthorized e-money); while still locked
 // in escrow it can be refunded on failure.
 
-import { generateIdentity, publicKeyFromDid, type Identity } from "../identity";
-import { DOMAIN, signEd25519, verifyEd25519 } from "../signing";
+import { generateIdentity, type Identity } from "../identity";
+import { DOMAIN, signEd25519, verifyByDid } from "../signing";
 
 export type EscrowStatus = "locked" | "released" | "refunded";
 
@@ -128,8 +128,7 @@ export class SettlementRail {
 export function verifySettlement(rec: SettlementRecord): { ok: boolean; reason?: string } {
   const { sig, ...base } = rec;
   try {
-    const pub = publicKeyFromDid(rec.rail);
-    const ok = verifyEd25519(DOMAIN.settlement, base, sig, pub);
+    const ok = verifyByDid(rec.rail, DOMAIN.settlement, base, sig);
     return ok ? { ok: true } : { ok: false, reason: "bad settlement signature" };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };

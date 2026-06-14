@@ -4,8 +4,8 @@
 // verifiable independent of where it is hosted (a registry or agent can confirm
 // it is authentic and unaltered, and authored by the claimed DID).
 
-import { publicKeyFromDid, type Identity } from "./identity";
-import { DOMAIN, signEd25519, verifyEd25519 } from "./signing";
+import { type Identity } from "./identity";
+import { DOMAIN, signEd25519, verifyByDid } from "./signing";
 
 export interface Capability {
   key: string;
@@ -43,8 +43,7 @@ export function verifyManifest(manifest: Manifest): { ok: boolean; reason?: stri
   if (!structural.ok) return structural;
   const { sig, ...unsigned } = manifest;
   try {
-    const pub = publicKeyFromDid(manifest.identity);
-    const ok = verifyEd25519(DOMAIN.manifest, unsigned, sig, pub);
+    const ok = verifyByDid(manifest.identity, DOMAIN.manifest, unsigned, sig);
     return ok ? { ok: true } : { ok: false, reason: "bad manifest signature" };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };

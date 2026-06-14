@@ -4,8 +4,8 @@
 // not "the agent has my keys" but "the agent may do exactly this much".
 
 import { PROTOCOL_VERSION } from "./envelope";
-import { publicKeyFromDid, type Identity } from "./identity";
-import { DOMAIN, signEd25519, verifyEd25519 } from "./signing";
+import { type Identity } from "./identity";
+import { DOMAIN, signEd25519, verifyByDid } from "./signing";
 
 export interface GrantScope {
   capability: string;
@@ -47,8 +47,7 @@ export function verifyGrant(
   if (!grant.sig) return { ok: false, reason: "missing grant signature" };
   const { sig, ...unsigned } = grant;
   try {
-    const pub = publicKeyFromDid(grant.issuer);
-    const sigOk = verifyEd25519(DOMAIN.grant, unsigned, sig, pub);
+    const sigOk = verifyByDid(grant.issuer, DOMAIN.grant, unsigned, sig);
     if (!sigOk) return { ok: false, reason: "bad grant signature" };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };

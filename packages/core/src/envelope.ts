@@ -4,8 +4,8 @@
 // (an envelope signature cannot be reused as a grant/attestation/…).
 
 import { randomUUID } from "node:crypto";
-import { publicKeyFromDid, type Identity } from "./identity";
-import { DOMAIN, signEd25519, verifyEd25519 } from "./signing";
+import { type Identity } from "./identity";
+import { DOMAIN, signEd25519, verifyByDid } from "./signing";
 
 export const PROTOCOL_VERSION = "aleph/0.1";
 
@@ -45,8 +45,8 @@ export function verifyEnvelope(env: Envelope): { ok: boolean; reason?: string } 
   if (env.v.split("/")[0] !== "aleph") return { ok: false, reason: "unknown protocol family" };
   const { sig, ...unsigned } = env;
   try {
-    const pub = publicKeyFromDid(env.from);
-    const ok = verifyEd25519(DOMAIN.envelope, unsigned, sig, pub);
+    // Suite-agnostic: the signer's DID declares Ed25519 or secp256k1.
+    const ok = verifyByDid(env.from, DOMAIN.envelope, unsigned, sig);
     return ok ? { ok: true } : { ok: false, reason: "bad signature" };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };

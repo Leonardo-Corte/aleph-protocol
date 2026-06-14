@@ -7,9 +7,9 @@
 // agent downloads raw attestations, verifies each, discards the unbacked, and
 // weights by settled value with its own policy.
 
-import { publicKeyFromDid, type Identity } from "../identity";
+import { type Identity } from "../identity";
 import { verifySettlement, type SettlementRecord } from "../settle/rail";
-import { DOMAIN, signEd25519, verifyEd25519 } from "../signing";
+import { DOMAIN, signEd25519, verifyByDid } from "../signing";
 
 export interface Attestation {
   v: string;
@@ -44,8 +44,7 @@ export function createAttestation(
 export function verifyAttestation(att: Attestation): { ok: boolean; reason?: string } {
   const { sig, ...base } = att;
   try {
-    const pub = publicKeyFromDid(att.issued_by);
-    if (!verifyEd25519(DOMAIN.attestation, base, sig, pub)) {
+    if (!verifyByDid(att.issued_by, DOMAIN.attestation, base, sig)) {
       return { ok: false, reason: "bad attestation signature" };
     }
   } catch (e) {
