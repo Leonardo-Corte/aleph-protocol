@@ -1,6 +1,6 @@
 {
   "name": "@aleph/transport",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Internal: tiny node:http helpers shared by the node and registry runtimes.",
   "type": "module",

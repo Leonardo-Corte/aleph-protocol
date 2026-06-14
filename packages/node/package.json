@@ -1,6 +1,6 @@
 {
   "name": "@aleph/node",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Aleph Protocol node runtime — a capability provider: publishes a Manifest, verifies grants, validates schema, settles, and returns signed receipts.",
   "type": "module",
   "license": "Apache-2.0",

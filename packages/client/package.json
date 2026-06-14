@@ -1,6 +1,6 @@
 {
   "name": "@aleph/client",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Aleph Protocol client — the agent-facing SDK: resolve, rank by trust, invoke, pay, verify, compose. THE target.",
   "type": "module",
   "license": "Apache-2.0",

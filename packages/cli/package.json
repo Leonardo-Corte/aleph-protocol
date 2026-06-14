@@ -1,6 +1,6 @@
 {
   "name": "@aleph/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Aleph Protocol CLI — keygen, run a node/registry, resolve and invoke from the terminal.",
   "type": "module",
   "license": "Apache-2.0",

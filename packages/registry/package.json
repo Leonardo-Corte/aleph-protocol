@@ -1,6 +1,6 @@
 {
   "name": "@aleph/registry",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Aleph Protocol registry — the discovery multiplier: nodes register, agents RESOLVE, with federation.",
   "type": "module",
   "license": "Apache-2.0",

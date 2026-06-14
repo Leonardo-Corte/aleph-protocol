@@ -1,6 +1,6 @@
 {
   "name": "@aleph/mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Aleph Protocol MCP server — exposes Aleph to any MCP-capable agent as aleph_resolve and aleph_invoke tools.",
   "type": "module",
   "license": "Apache-2.0",
