@@ -2,7 +2,7 @@
 
 > **A thin-waist protocol for an agent-native web** — how machines **find, trust, act, pay, and prove**, without a human in the loop and without a central authority gatekeeping any of them.
 
-**Status:** Working draft · foundational documents **+ a running reference implementation** in [`code/`](code/) where **all five verbs work end to end**, with 27 tests (`cd code && node src/demo/run.ts`). Includes settlement (PAY), settlement-backed reputation (TRUST, anti-Sybil), receipt chaining (PROVE), agentic composition, a hardened waist, `did:web`, registry federation, a CLI, and native agent use over MCP.
+**Status:** Working draft · foundational documents **+ a running reference implementation** as a production pnpm monorepo of `@aleph/*` packages where **all five verbs work end to end**, with 27 tests, strict type-checking, and green CI (`pnpm install && pnpm test`). Includes settlement (PAY), settlement-backed reputation (TRUST, anti-Sybil), receipt chaining (PROVE), agentic composition, a hardened waist, `did:web`, registry federation, a CLI, and native agent use over MCP.
 *Aleph is a working codename — the name is an evolvable layer, not part of the protocol's frozen core, so it may change. (An unrelated project, Aleph.im, uses the name in the storage space.)*
 
 ---
@@ -32,7 +32,7 @@ graph LR
 | 2 | [`aleph-protocol-paper.md`](aleph-protocol-paper.md) | The foundational paper — problem, design principles, the five verbs in depth, the trust loop, open problems, relationship to MCP/A2A/DID/web3, build order. *The why.* | Understanding the design. |
 | 3 | [`aleph-manifest-spec.md`](aleph-manifest-spec.md) | The normative wire spec — the Envelope, Manifest, Grant, and five message types, field by field (RFC-2119). *The how.* | Implementers. |
 | 4 | [`ROADMAP.md`](ROADMAP.md) | **The production development roadmap** — the exhaustive, section-by-section plan to take Aleph from the tested prototype to a network released to the world (engineering, persistence, hardened crypto, on-chain settlement, security/audit, deployment, SDKs, launch). With code, acceptance criteria, and a timeline. | Building it for real. |
-| — | [`code/`](code/) | The running reference implementation — all five verbs, 27 tests. | Run it now. |
+| — | [`packages/`](packages/) | The reference implementation — `@aleph/*` packages, all five verbs, 27 tests, green CI. Run `pnpm install && pnpm test`. | Run it now. |
 
 ---
 
@@ -111,7 +111,7 @@ The **registry** is the multiplier of everything else and therefore the first co
 
 ## Status & contributing
 
-The foundational documents are complete, and a **running reference implementation** lives in [`code/`](code/) with **all five verbs working end to end** (27 tests): identity (`did:key`/`did:web`), signed envelopes with a hardened waist (replay/skew/version), bounded grants, typed schema validation, escrow settlement (atomic release / refund-on-failure), settlement-backed attestations (anti-Sybil) with consumer-computed trust, reputation-ranked discovery, receipt chaining, agentic composition across nodes, registry federation, a capability vocabulary, a CLI, and native agent use over MCP.
+The foundational documents are complete, and a **running reference implementation** lives in [`packages/`](packages/) — a production pnpm monorepo — with **all five verbs working end to end** (27 tests, strict types, green CI): identity (`did:key`/`did:web`), signed envelopes with a hardened waist (replay/skew/version), bounded grants, typed schema validation, escrow settlement (atomic release / refund-on-failure), settlement-backed attestations (anti-Sybil) with consumer-computed trust, reputation-ranked discovery, receipt chaining, agentic composition across nodes, registry federation, a capability vocabulary, a CLI, and native agent use over MCP.
 
 The honestly-open frontier (see the paper, §8): a real on-chain settlement/payment rail to replace the in-memory one, the fiat/oracle reserve boundary, and persistent/federated registries at scale. It is deliberately imperfect and expected to change: **when reality contradicts a page, the page changes.** Issues, critiques, and precise attacks are worth more than agreement — a convergent objection from an opposite premise is how this gets stronger.
 

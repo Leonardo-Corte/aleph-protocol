@@ -162,12 +162,13 @@ jobs:
 4. Move the 27 tests next to their packages; ensure all green under the new layout.
 5. Pin Node to an LTS (22) in `engines` and `.nvmrc`.
 
-**Acceptance criteria for Section 1.**
-- [ ] `pnpm install && pnpm -r build && pnpm -r test` is green from a clean clone.
-- [ ] `pnpm -r typecheck` passes (no type errors — a gate that did not exist before).
-- [ ] CI runs on every push/PR and is green.
-- [ ] Each package builds to `dist/` with `.d.ts` types.
-- [ ] `changesets` is configured; a dry-run release produces correct version bumps.
+**Acceptance criteria for Section 1.** ✅ **DONE (2026-06-14)**
+- [x] `pnpm install && pnpm -r build && pnpm -r test` is green from a clean clone (verified by re-cloning).
+- [x] `pnpm -r typecheck` passes under strict mode (a gate that did not exist before — surfaced and fixed ~15 latent bugs).
+- [x] CI runs on every push/PR and is green (Node 22 + 24 matrix, lint, format, build, test, coverage gate).
+- [x] Each package builds to `dist/` with `.d.ts` types; `npm pack --dry-run` clean (no source leakage) for all 6 publishable packages.
+- [x] `changesets` is configured; `changeset status` shows correct bumps; release workflow ready (manual until npm token at launch).
+- [x] Plus: ESLint/Prettier + husky pre-commit; coverage thresholds (88/88/88/68) enforced; contribution governance (CONTRIBUTING, SECURITY, CoC, templates, CODEOWNERS, AIP process).
 
 **Risks.** Monorepo migration can churn imports; do it in one focused pass with tests as the safety net. Don't gold-plate the tooling — the goal is gates, not a tool museum.
 
