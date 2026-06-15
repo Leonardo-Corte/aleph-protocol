@@ -61,7 +61,7 @@ server.registerTool(
     if (!chosen) {
       return { content: [{ type: "text", text: `No Aleph node found for "${capability}".` }], isError: true };
     }
-    const manifest = await fetchManifest(chosen.manifest);
+    const manifest = await fetchManifest(chosen.manifest, chosen.did);
     const endpoint = manifest.endpoint[0];
     if (!endpoint) {
       return {

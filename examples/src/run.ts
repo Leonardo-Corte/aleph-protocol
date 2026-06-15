@@ -53,7 +53,8 @@ console.log(
 // fetch the chosen node's full manifest (lazy, only for the candidate)
 const chosen = results[0];
 if (!chosen) throw new Error("no node found for math.add");
-const manifest = await fetchManifest(chosen.manifest);
+// re-verify the manifest signature AND pin it to the DID we resolved
+const manifest = await fetchManifest(chosen.manifest, chosen.did);
 const endpoint = manifest.endpoint[0];
 if (!endpoint) throw new Error("node manifest has no endpoint");
 

@@ -3,9 +3,10 @@
 
 import assert from "node:assert/strict";
 import { sign, verify } from "node:crypto";
+import http from "node:http";
 import { test } from "node:test";
-import { resolve } from "@aleph/client";
-import { generateIdentity } from "@aleph/core";
+import { resolve, fetchManifest } from "@aleph/client";
+import { generateIdentity, signManifest, type Manifest } from "@aleph/core";
 import { Vocabulary, isWellFormedKey, namespaceOf } from "@aleph/core";
 import { publicKeyFromVerificationMethod } from "@aleph/core";
 import { createNode } from "@aleph/node";
@@ -129,5 +130,50 @@ test("registry anti-entropy: an offline peer catches up on reconcile", async () 
   } finally {
     await node.close();
     await regA.close();
+  }
+});
+
+test("manifest re-verification: the client rejects forged or substituted manifests", async () => {
+  const id = generateIdentity();
+  const real = signManifest(
+    {
+      v: "aleph/0.1",
+      identity: id.did,
+      conformance: "L1",
+      capabilities: [{ key: "math.add", risk: "low" }],
+      endpoint: ["http://127.0.0.1/aleph"],
+    },
+    id,
+  );
+
+  // a malicious host that can serve any manifest body we set
+  let body: unknown = real;
+  const host = http.createServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+  });
+  await new Promise<void>((r) => host.listen(4630, "127.0.0.1", () => r()));
+  const url = "http://127.0.0.1:4630/manifest";
+
+  try {
+    // authentic manifest, identity pinned to the resolved DID → trusted
+    const got = await fetchManifest(url, id.did);
+    assert.equal(got.identity, id.did);
+
+    // tampered after signing (extra capability) → signature no longer verifies
+    body = { ...real, capabilities: [...real.capabilities, { key: "evil.exec", risk: "high" }] };
+    await assert.rejects(() => fetchManifest(url, id.did), /verification failed/);
+
+    // a different node's validly-signed manifest, served at this host → identity
+    // pin catches the substitution even though the signature is valid
+    const other = generateIdentity();
+    body = signManifest({ ...real, identity: other.did, sig: undefined } as Manifest, other);
+    await assert.rejects(() => fetchManifest(url, id.did), /identity mismatch/);
+
+    // an unsigned manifest → rejected
+    body = { ...real, sig: undefined };
+    await assert.rejects(() => fetchManifest(url, id.did), /verification failed/);
+  } finally {
+    await new Promise<void>((r) => host.close(() => r()));
   }
 });

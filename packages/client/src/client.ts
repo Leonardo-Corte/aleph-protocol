@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import type { Identity } from "@aleph/core";
 import type { Grant } from "@aleph/core";
-import type { Manifest } from "@aleph/core";
+import { verifyManifest, type Manifest } from "@aleph/core";
 import { createEnvelope, verifyEnvelope, type Envelope } from "@aleph/core";
 import { verifySettlement, type SettlementRail, type SettlementRecord } from "@aleph/core";
 import { createAttestation, computeTrust, type Attestation } from "@aleph/core";
@@ -65,9 +65,22 @@ export async function resolve(
 }
 
 // Fetch the full Manifest — only for a shortlisted candidate (lazy).
-export async function fetchManifest(url: string): Promise<Manifest> {
+// The registry is a replicator, not an authority: the agent fetches the full
+// Manifest lazily and RE-VERIFIES it before trusting it. The Manifest is signed
+// by the node's own DID, so authenticity is independent of where it is hosted —
+// a tampered or substituted Manifest (served by a malicious host or a lying
+// registry) is rejected here, not trusted on faith. Pass `expectedDid` (the DID
+// you resolved) to also pin identity, so a host cannot serve a different node's
+// otherwise-valid Manifest.
+export async function fetchManifest(url: string, expectedDid?: string): Promise<Manifest> {
   const res = await fetch(url);
-  return (await res.json()) as Manifest;
+  const manifest = (await res.json()) as Manifest;
+  if (expectedDid !== undefined && manifest.identity !== expectedDid) {
+    throw new Error(`manifest identity mismatch: expected ${expectedDid}, got ${manifest.identity}`);
+  }
+  const v = verifyManifest(manifest);
+  if (!v.ok) throw new Error(`manifest verification failed: ${v.reason}`);
+  return manifest;
 }
 
 // ACT + PAY + PROVE — invoke a capability, paying via escrow if requested,
