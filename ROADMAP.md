@@ -648,12 +648,12 @@ A node can return malicious *content*. The agent calling it must treat results a
 - **Bug bounty:** stand up a bounty program (e.g. on a bounty platform) before mainnet.
 
 **Acceptance criteria for Section 7.**
-- [ ] `spec/THREAT-MODEL.md` exists; every row links to enforcing code + a test.
-- [ ] Grant sub-delegation is specified and enforced (a sub-grant exceeding its parent is rejected, with a test).
-- [ ] Rate limiting is live on all public endpoints, with tests.
-- [ ] HTTP server hardening (timeouts, connection caps) is configured.
-- [ ] Testnet launch: internal review + threat model complete.
-- [ ] Mainnet gate: external core audit + contract audit passed, report published, bug bounty live.
+- [x] `spec/THREAT-MODEL.md` exists; every row links to enforcing code + a test. *(14 adversary rows, each with code + test.)*
+- [x] Grant sub-delegation is specified and enforced (a sub-grant exceeding its parent is rejected, with a test). *(createSubGrant/verifyGrant chain; grant.test.ts covers widen/expiry/non-delegable/depth/forgery.)*
+- [x] Rate limiting is live on all public endpoints, with tests. *(per-IP + per-DID token bucket on registry+node; security.test.ts 429.)*
+- [x] HTTP server hardening (timeouts, connection caps) is configured. *(hardenServer: headersTimeout/requestTimeout/maxConnections on both servers.)*
+- [x] Testnet launch: internal review + threat model complete. *(threat model + all gate-tests green.)*
+- [ ] **Mainnet gate (owner's manual step):** external core audit + contract audit passed, report published, bug bounty live. *(Non-automatable; gates real value, not testnet — see THREAT-MODEL.md + D10. Deliberately left open.)*
 
 **Risks.** The temptation is to skip the audit "because it's just testnet." Hold the line: the audit gates *mainnet*, but the threat model and the gate-tests are required even for testnet. Security debt compounds silently.
 

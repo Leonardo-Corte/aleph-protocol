@@ -261,6 +261,37 @@ registry.
 
 ---
 
+## D10 — Security: written threat model, enforced authz, abuse defenses; audit gates mainnet
+
+**Decision.**
+
+- **Threat model is a living artifact** (`spec/THREAT-MODEL.md`): every adversary
+  row links the enforcing code **and a test**. A threat with no linked test is an
+  open hole. Required even for testnet.
+- **Grant is the authorization primitive**, now with **sub-delegation**: a
+  delegable grant narrows into a sub-grant that can only be ⊆ its parent (scope,
+  `max_eur`, expiry), is **depth-bounded** (`MAX_DELEGATION_DEPTH`), and is
+  re-verified as a **chain back to the root principal**. Capability-scoped payment
+  limits are enforced **jointly** with the escrow amount.
+- **Abuse defenses live on all public endpoints:** per-IP + per-DID token-bucket
+  rate limiting (429), the existing 1 MB body cap, **structural complexity caps**
+  (nesting depth / array width / key count / capabilities-per-Manifest), and
+  **server hardening** (headers/request timeouts, max connections).
+- **Agent-side safety:** capability output is **untrusted** — the agent validates
+  it against the declared output schema (`verifyOutput`) and gates high-risk /
+  irreversible capabilities behind principal confirmation (`requiresConfirmation`).
+- **The external audit gates mainnet, not testnet.** An independent core-crypto
+  audit + a Solidity audit of `AlephEscrow.sol` + a published report + a bug
+  bounty are **non-negotiable before real value**, and are the **owner's manual
+  gate** (cannot be automated here). Posture stays testnet-first (D7) until then.
+
+**Why.** A single exploited flaw in the waist or the escrow ends the project's
+credibility permanently. Encoding each mitigation as a tested gate (and refusing
+to skip the audit "because it's just testnet") is how security debt is kept from
+compounding silently.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
@@ -275,3 +306,7 @@ registry.
 - 2026-06-15 — D9 decided (registry at scale: replicating index, filtered+paged
   indexed discovery, anti-entropy federation, lazy manifest re-verification,
   caching; ROADMAP §6). Closes Milestone M2.
+- 2026-06-15 — D10 decided (security: threat model with tested mitigations, grant
+  sub-delegation, rate limiting + complexity caps + server hardening, agent-side
+  safety; external audit + bug bounty gate mainnet as owner's manual step;
+  ROADMAP §7).

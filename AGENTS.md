@@ -77,18 +77,20 @@ packages/                      # pnpm workspace, @aleph/* packages
                (domain separation, verifyByDid), keystore (scrypt+AES-GCM),
                keyring (rotation), resolver, vocabulary, settle/rail (in-memory
                reference), trust/attest (pluggable TrustPolicy, diversity-weighted
-               default, decay, revocation, computeTrustAsync) + chain, errors,
-               hash, base58.
-  transport/   @aleph/transport — node:http helpers (readJson, sendJson,
-               asyncHandler, 1MB cap). PRIVATE.
+               default, decay, revocation, computeTrustAsync) + chain, grant
+               (sub-delegation chain), complexity caps, errors, hash, base58.
+  transport/   @aleph/transport — node:http helpers (readJson 1MB cap, sendJson,
+               asyncHandler, RateLimiter, clientIp, hardenServer). PRIVATE.
   node/        @aleph/node      — capability provider runtime. Signs its Manifest;
-               verifies grant+schema+escrow; pluggable stores.
+               verifies grant-chain+schema+escrow; rate limit + complexity caps +
+               server hardening; pluggable stores.
   registry/    @aleph/registry  — discovery; verifies Manifest sig; RegistryStore;
                filtered+paged RESOLVE; federation (gossip + anti-entropy /since +
                reconcile); short-TTL resolve cache.
   client/      @aleph/client    — agent SDK (THE target): resolve (filtered/paged)/
                resolveRanked/invoke/attest/fetchReputation (paginated)/
-               fetchReputationSummary/fetchManifest (re-verifies + pins DID)/compose.
+               fetchReputationSummary/fetchManifest (re-verifies + pins DID)/
+               verifyOutput/requiresConfirmation (agent-side safety)/compose.
   mcp/         @aleph/mcp       — Aleph as an MCP server (aleph_resolve/aleph_invoke).
   cli/         @aleph/cli       — keygen/registry/node/resolve/invoke; EncryptedFileKeyStore.
   store/       @aleph/store     — async repos (Registry/Nonce/Reputation/Settlement)
@@ -112,6 +114,7 @@ spec/
   REPUTATION.md                 — trust policy spec (diversity weighting, decay,
                                   revocation, on-chain verification, pagination)
   REGISTRY.md                   — discovery/federation + run-your-own-registry guide
+  THREAT-MODEL.md               — adversaries → mitigation, each linked to code + test
 conformance/python/            — independent Python impl (proves cross-language)
 .github/workflows/ci.yml       — 6 jobs (see §5)
 ```
@@ -144,7 +147,7 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **75 tests (74 pass, 1 skipped = postgres without DATABASE_URL)**,
+Current state: **86 tests (85 pass, 1 skipped = postgres without DATABASE_URL)**,
 all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
 (functions lowered because the Postgres/EVM drivers are CI-only).
 
@@ -202,18 +205,20 @@ signed revocation, on-chain verification hook, paginated/summarised retrieval,
 wash-trading acceptance test — DECISIONS D8, spec/REPUTATION.md) · **S6 (registry
 at scale: filtered+paged indexed discovery, anti-entropy federation /since +
 reconcile, lazy manifest re-verification + DID pinning, ETag/cache + p99 load
-test — DECISIONS D9, spec/REGISTRY.md). Closes Milestone M2.**
+test — DECISIONS D9, spec/REGISTRY.md). Closes Milestone M2. · **S7 (security:
+threat model with tested mitigations, grant sub-delegation chain, per-IP/per-DID
+rate limiting + complexity caps + server hardening, agent-side safety — DECISIONS
+D10, spec/THREAT-MODEL.md).**
 
 **Deferred (tracked):** `did:pkh` (eip155 recovery) → chain tooling, and it now
 also gates binding on-chain settlement *addresses* to attesting *DIDs* (S5.3);
 public-testnet deploy of AlephEscrow → owner's manual step (verified on anvil);
-**staking/slashing** for reputation → a planned AIP (D8).
+**staking/slashing** for reputation → a planned AIP (D8); **external core +
+contract audit + bug bounty** → owner's manual gate to MAINNET (D10, ROADMAP §7.5).
 
-**NEXT — Section 7: Security (threat model, authz, rate limiting, audit).** Per
-ROADMAP §7: write the threat model, fully specify + test the authorization
-model, abuse defenses (rate limiting), agent-side safety, then the external
-audit gate to mainnet. Begins Milestone M3 (S7 security / S8 observability /
-S9 deploy).
+**NEXT — Section 8: Observability (structured logging, metrics, tracing,
+alerting).** Then S9 (deployment: containers, TLS, secrets, run-your-own guide).
+M3 in progress (S7 done; S8 observability / S9 deploy remain).
 
 ---
 
