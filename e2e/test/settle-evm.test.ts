@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { test, before, after } from "node:test";
-import { EvmSettlementRail, deployEscrow, escrowIdFor } from "@aleph/settle-evm";
+import { EvmSettlementRail, deployEscrow, escrowIdFor, evmSettlementVerifier } from "@aleph/settle-evm";
 import { createWalletClient, createPublicClient, http, parseUnits, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
@@ -117,6 +117,13 @@ test("on-chain settlement: deploy, lock, release, verify (real EVM)", { skip: !h
   assert.equal((await rail.verify(record)).ok, true);
   // a record claiming the wrong amount fails verification
   assert.equal((await rail.verify({ ...record, amount: "1" })).ok, false);
+
+  // the injectable trust-layer verifier reads the chain: real record passes,
+  // a fabricated reference (never-locked escrow id) is rejected.
+  const verifier = evmSettlementVerifier(rail);
+  assert.equal((await verifier(record)).ok, true);
+  const fabricated = { ...record, escrowId: escrowIdFor("never", "happened") };
+  assert.equal((await verifier(fabricated)).ok, false);
 });
 
 test("on-chain settlement: refund after deadline returns to payer", { skip: !hasAnvil }, async () => {

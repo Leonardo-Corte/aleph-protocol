@@ -12,6 +12,7 @@ import {
   createAttestation,
   verifyAttestation,
   computeTrust,
+  computeTrustAsync,
   createRevocation,
   type Attestation,
 } from "@aleph/core";
@@ -110,6 +111,41 @@ test("negative attestations lower the score; a signed revocation removes weight"
   assert.throws(() =>
     createAttestation(payer, { subject: payee.did, settlement: good.settlement, rating: -1 }),
   );
+});
+
+test("computeTrustAsync: an injected verifier can reject a fabricated settlement", async () => {
+  const rail = new SettlementRail();
+  const payer = generateIdentity();
+  const payee = generateIdentity();
+  rail.deposit(payer.did, 100);
+  const now = Date.now();
+
+  const mk = (amount: number, rating: number) => {
+    const lock = rail.lock(payer.did, payee.did, amount, "r" + Math.random());
+    const s = rail.release((lock as { escrow: { id: string } }).escrow.id);
+    return createAttestation(payer, { subject: payee.did, settlement: s, rating });
+  };
+  const real = mk(10, 1.0);
+  const alsoReal = mk(10, 1.0);
+
+  // default verifier = sync verifyAttestation: both count
+  const base = await computeTrustAsync([real, alsoReal], { policy: { now } });
+  assert.equal(base.count, 2);
+
+  // a stricter verifier that re-reads an external source (here: a stub standing
+  // in for an on-chain read) rejects one settlement → it earns zero weight.
+  const fabricatedId = alsoReal.settlement.escrowId;
+  const withChainCheck = await computeTrustAsync([real, alsoReal], {
+    policy: { now },
+    verifier: (att) =>
+      Promise.resolve(
+        att.settlement.escrowId === fabricatedId
+          ? { ok: false, reason: "not found on chain" }
+          : verifyAttestation(att),
+      ),
+  });
+  assert.equal(withChainCheck.count, 1);
+  assert.equal(withChainCheck.totalValue, 10);
 });
 
 test("end-to-end loop: pay -> receipt -> attest -> reputation -> ranked discovery", async () => {

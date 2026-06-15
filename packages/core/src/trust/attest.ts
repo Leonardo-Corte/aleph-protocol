@@ -169,6 +169,42 @@ export function computeTrust(
   policy: TrustPolicy = {},
   revocations: Revocation[] = [],
 ): TrustScore {
+  // Synchronous path: verify each attestation against the in-memory reference
+  // rail (signature + structural + settlement signature), then score.
+  return score(
+    attestations.filter((att) => verifyAttestation(att).ok),
+    policy,
+    revocations,
+  );
+}
+
+// A consumer-injected hook that decides whether an attestation counts — e.g. by
+// re-reading a blockchain to confirm its settlement is real. Returning ok=false
+// excludes the attestation, so a FABRICATED settlement reference earns nothing.
+// core stays I/O-free: the chain reader lives in the rail package that owns it.
+export type AttestationVerifier = (att: Attestation) => Promise<{ ok: boolean; reason?: string }>;
+
+// Asynchronous trust: identical scoring to computeTrust, but an injected
+// verifier owns the "does this attestation count?" decision. The default is the
+// sync verifyAttestation (in-memory rail); an on-chain rail supplies a verifier
+// that re-reads the chain, satisfying "trust computed from on-chain-verified
+// settlements — a fabricated reference is rejected by reading the chain".
+export async function computeTrustAsync(
+  attestations: Attestation[],
+  opts: { policy?: TrustPolicy; revocations?: Revocation[]; verifier?: AttestationVerifier } = {},
+): Promise<TrustScore> {
+  const verifier = opts.verifier ?? ((att: Attestation) => Promise.resolve(verifyAttestation(att)));
+  const verified: Attestation[] = [];
+  for (const att of attestations) {
+    if ((await verifier(att)).ok) verified.push(att);
+  }
+  return score(verified, opts.policy ?? {}, opts.revocations ?? []);
+}
+
+// The scoring kernel: takes already-VERIFIED attestations and applies dedupe,
+// revocation, issuer grouping, decay, diversity weight, and confidence. Shared
+// by the sync and async entry points so the policy lives in exactly one place.
+function score(verified: Attestation[], policy: TrustPolicy, revocations: Revocation[]): TrustScore {
   const now = policy.now ?? Date.now();
   const halfLife = policy.halfLifeMs ?? DEFAULT_HALF_LIFE_MS;
   const decay = policy.decay ?? ((age: number) => Math.pow(0.5, age / halfLife));
@@ -187,8 +223,7 @@ export function computeTrust(
   let count = 0;
   let totalValue = 0;
 
-  for (const att of attestations) {
-    if (!verifyAttestation(att).ok) continue; // unbacked / invalid => zero weight
+  for (const att of verified) {
     if (revokedBy.get(att.sig) === att.issued_by) continue; // revoked by its own issuer
     const id = att.settlement.escrowId;
     if (seen.has(id)) continue;

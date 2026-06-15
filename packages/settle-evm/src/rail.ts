@@ -207,3 +207,16 @@ export class EvmSettlementRail {
     return getContract({ address: this.cfg.escrowAddress, abi: alephEscrowAbi, client: this.pub });
   }
 }
+
+// The chain-reading settlement verifier, as a standalone function. A consumer
+// of the trust layer injects this so a settlement-backed attestation counts
+// ONLY if its escrow really exists on-chain with the claimed parties, amount,
+// and terminal status — a fabricated reference is rejected by reading the chain.
+// (Binding the on-chain payer/payee ADDRESSES to the attesting DID needs did:pkh,
+// which is deferred; until then this verifies settlement authenticity, and the
+// trust layer's DID-level issuer-matching stays on the in-memory reference rail.)
+export function evmSettlementVerifier(
+  rail: EvmSettlementRail,
+): (rec: EvmSettlementRecord) => Promise<{ ok: boolean; reason?: string }> {
+  return (rec) => rail.verify(rec);
+}
