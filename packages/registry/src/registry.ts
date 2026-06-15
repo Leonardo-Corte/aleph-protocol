@@ -9,7 +9,13 @@ import type { Envelope, NonceChecker } from "@aleph/core";
 import { NonceStore, verifyReceived } from "@aleph/core";
 import { verifyManifest, type Manifest } from "@aleph/core";
 import { err } from "@aleph/core";
-import { InMemoryRegistryStore, type RegistryStore, type RepHint, type ResolveFilter } from "@aleph/store";
+import {
+  InMemoryRegistryStore,
+  type RegistryStore,
+  type RepHint,
+  type ResolveFilter,
+  type RegistrationDelta,
+} from "@aleph/store";
 import { readJson, sendJson, asyncHandler } from "@aleph/transport";
 
 // Best-effort fetch of a node's reputation summary, kept as a COARSE discovery
@@ -46,11 +52,21 @@ export function createRegistry(opts: {
   nonceStore?: NonceChecker;
   // Injectable for tests; defaults to a real best-effort HTTP fetch.
   fetchSummary?: (reputationUrl: string) => Promise<RepHint | undefined>;
+  // If set, periodically pull deltas from peers (anti-entropy). Tests call
+  // reconcile() directly for determinism; production sets an interval.
+  reconcileIntervalMs?: number;
 }) {
   const store: RegistryStore = opts.store ?? new InMemoryRegistryStore();
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
   const peers = opts.peers ?? [];
   const fetchSummary = opts.fetchSummary ?? defaultFetchSummary;
+
+  // Anti-entropy state: how far we have caught up on each peer's feed. Gossip-on-
+  // write is best-effort (a peer may be offline); periodic reconcile is the
+  // backstop that guarantees eventual consistency. Cursors are per-peer because
+  // each registry numbers its own feed independently.
+  const peerCursor = new Map<string, number>();
+  let reconcileTimer: ReturnType<typeof setInterval> | undefined;
 
   async function gossip(manifest: Manifest, manifestUrl: string): Promise<void> {
     await Promise.allSettled(
@@ -65,9 +81,45 @@ export function createRegistry(opts: {
     );
   }
 
+  // Pull each peer's deltas since our last cursor, RE-VERIFY every Manifest
+  // (a registry trusts no peer's claims — it replicates only authentic, self-
+  // signed Manifests), and upsert idempotently. Returns how many it indexed.
+  async function reconcile(): Promise<number> {
+    let pulled = 0;
+    for (const peer of peers) {
+      const after = peerCursor.get(peer) ?? 0;
+      try {
+        const res = await fetch(`${peer}/since?rev=${after}&limit=500`);
+        if (!res.ok) continue;
+        const { changes } = (await res.json()) as { changes?: RegistrationDelta[] };
+        for (const d of changes ?? []) {
+          if (verifyManifest(d.manifest).ok) {
+            await store.upsertNode(d.manifest, d.manifestUrl);
+            pulled++;
+          }
+          peerCursor.set(peer, Math.max(peerCursor.get(peer) ?? 0, d.rev));
+        }
+      } catch {
+        // a peer being unreachable is normal; the next reconcile retries
+      }
+    }
+    return pulled;
+  }
+
   const server = http.createServer(
     asyncHandler(async (req, res) => {
       try {
+        // Anti-entropy feed: registrations since `rev`, oldest-first, so a peer
+        // (even one that was offline) can catch up by pulling deltas.
+        if (req.method === "GET" && req.url?.startsWith("/since")) {
+          const url = new URL(req.url, "http://internal");
+          const after = Number(url.searchParams.get("rev") ?? 0) || 0;
+          const limit = Math.min(Number(url.searchParams.get("limit") ?? 500) || 500, 1000);
+          const changes = await store.changesSince(after, limit);
+          sendJson(res, 200, { changes });
+          return;
+        }
+
         // Out-of-band registration: a node submits its Manifest + where to fetch it.
         if (req.method === "POST" && req.url === "/register") {
           const body = await readJson(req);
@@ -120,17 +172,25 @@ export function createRegistry(opts: {
 
   return {
     url: `http://127.0.0.1:${opts.port}`,
+    // Pull deltas from all peers now (the anti-entropy backstop). Exposed so
+    // tests can drive it deterministically; production uses reconcileIntervalMs.
+    reconcile,
     listen: () =>
       new Promise<void>((r) =>
         server.listen(opts.port, "127.0.0.1", () => {
+          if (opts.reconcileIntervalMs) {
+            reconcileTimer = setInterval(() => void reconcile(), opts.reconcileIntervalMs);
+            reconcileTimer.unref?.(); // never keep the process alive for it
+          }
           r();
         }),
       ),
     close: () =>
-      new Promise<void>((r) =>
+      new Promise<void>((r) => {
+        if (reconcileTimer) clearInterval(reconcileTimer);
         server.close(() => {
           r();
-        }),
-      ),
+        });
+      }),
   };
 }

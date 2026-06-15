@@ -83,3 +83,51 @@ test("registry federation: register at one, discover at the peer", async () => {
     await regB.close();
   }
 });
+
+test("registry anti-entropy: an offline peer catches up on reconcile", async () => {
+  // B starts WITHOUT A as a peer and stays down during A's registration, so
+  // gossip-on-write never reaches it — only anti-entropy can recover the state.
+  const regA = createRegistry({ port: 4620 });
+  await regA.listen();
+
+  const node = createNode({
+    identity: generateIdentity(),
+    port: 4622,
+    capabilities: {
+      "math.add": { handler: (i) => ({ output: { sum: (i.a as number) + (i.b as number) } }) },
+    },
+  });
+  await node.listen();
+
+  try {
+    // register only at A (B does not exist yet → gossip cannot reach it)
+    await fetch(regA.url + "/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ manifest: node.manifest, manifestUrl: node.url + "/manifest" }),
+    });
+
+    // B comes online afterwards, peered to A
+    const regB = createRegistry({ port: 4621, peers: [regA.url] });
+    await regB.listen();
+    try {
+      // before reconciling, B knows nothing
+      assert.equal((await resolve(regB.url, "math.add", generateIdentity())).results.length, 0);
+
+      // anti-entropy: B pulls A's feed, re-verifies, indexes
+      const pulled = await regB.reconcile();
+      assert.equal(pulled, 1);
+      const fromB = (await resolve(regB.url, "math.add", generateIdentity())).results;
+      assert.equal(fromB.length, 1);
+      assert.equal(fromB[0]?.did, node.manifest.identity);
+
+      // reconcile is idempotent: a second pass advances the cursor, pulls nothing
+      assert.equal(await regB.reconcile(), 0);
+    } finally {
+      await regB.close();
+    }
+  } finally {
+    await node.close();
+    await regA.close();
+  }
+});
