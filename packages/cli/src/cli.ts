@@ -12,10 +12,32 @@ import { generateIdentity } from "@aleph/core";
 import { createGrant } from "@aleph/core";
 import { createNode } from "@aleph/node";
 import { createRegistry } from "@aleph/registry";
+import { PostgresStores, type Stores } from "@aleph/store";
+import { createLogger } from "@aleph/transport";
+import { loadServerConfig } from "./config";
 
 function arg(name: string, fallback?: string): string | undefined {
   const i = process.argv.indexOf("--" + name);
   return i >= 0 ? process.argv[i + 1] : fallback;
+}
+
+// CLI flags take precedence over env; both feed the validating config loader.
+function serverEnv(): Record<string, string | undefined> {
+  return {
+    ...process.env,
+    PORT: arg("port") ?? process.env.PORT,
+    HOST: arg("host") ?? process.env.HOST,
+    PUBLIC_URL: arg("public-url") ?? process.env.PUBLIC_URL,
+    PEERS: arg("peers") ?? process.env.PEERS,
+  };
+}
+
+// Persistent stores when DATABASE_URL is set (production); else in-memory (dev).
+async function openStores(databaseUrl?: string): Promise<Stores | undefined> {
+  if (!databaseUrl) return undefined;
+  const stores = await PostgresStores.connect(databaseUrl);
+  await stores.migrate();
+  return stores;
 }
 
 const cmd = process.argv[2];
@@ -29,20 +51,40 @@ switch (cmd) {
   }
 
   case "registry": {
-    const port = Number(arg("port", "4000"));
-    const peers = arg("peers")?.split(",").filter(Boolean);
-    const reg = createRegistry({ port, peers });
+    const cfg = loadServerConfig(serverEnv(), { port: 4000 });
+    const stores = await openStores(cfg.databaseUrl);
+    const reg = createRegistry({
+      port: cfg.port,
+      host: cfg.host,
+      publicUrl: cfg.publicUrl,
+      peers: cfg.peers,
+      store: stores?.registry,
+      nonceStore: stores?.nonces,
+      logger: createLogger({ level: cfg.logLevel }),
+      // federate: reconcile peers periodically once any are configured
+      reconcileIntervalMs: cfg.peers.length > 0 ? 30_000 : undefined,
+    });
     await reg.listen();
-    console.log(`registry listening on ${reg.url}` + (peers ? ` (peers: ${peers.join(", ")})` : ""));
+    console.log(
+      `registry listening on ${reg.url} · store:${cfg.databaseUrl ? "postgres" : "memory"}` +
+        (cfg.peers.length ? ` · peers: ${cfg.peers.join(", ")}` : ""),
+    );
     break;
   }
 
   case "node": {
-    const port = Number(arg("port", "4100"));
-    const registry = arg("registry");
+    const cfg = loadServerConfig(serverEnv(), { port: 4100 });
+    const registry = arg("registry") ?? process.env.REGISTRY_URL;
+    const stores = await openStores(cfg.databaseUrl);
     const node = createNode({
       identity: generateIdentity(),
-      port,
+      port: cfg.port,
+      host: cfg.host,
+      publicUrl: cfg.publicUrl,
+      logger: createLogger({ level: cfg.logLevel }),
+      reputationStore: stores?.reputation,
+      nonceStore: stores?.nonces,
+      settlementStore: stores?.settlements,
       capabilities: {
         "math.add": {
           schema: {
@@ -66,6 +108,19 @@ switch (cmd) {
     console.log(
       `listening on ${node.url} · capability: math.add` + (registry ? ` · registered at ${registry}` : ""),
     );
+    break;
+  }
+
+  case "healthcheck": {
+    // Used by the container HEALTHCHECK: ping a /healthz and exit 0/1.
+    const port = arg("port") ?? process.env.PORT ?? "4000";
+    const url = arg("url") ?? process.env.HEALTHCHECK_URL ?? `http://127.0.0.1:${port}/healthz`;
+    try {
+      const r = await fetch(url);
+      process.exit(r.ok ? 0 : 1);
+    } catch {
+      process.exit(1);
+    }
     break;
   }
 
@@ -122,10 +177,12 @@ switch (cmd) {
       [
         "Aleph CLI",
         "  keygen                                 generate a did:key identity",
-        "  registry --port 4000 [--peers a,b]     run a registry",
-        "  node --port 4100 [--registry URL]      run a node (math.add)",
+        "  registry [--port] [--host] [--peers a,b] [--public-url]   run a registry",
+        "  node [--port] [--host] [--registry URL] [--public-url]    run a node (math.add)",
+        "  healthcheck [--url|--port]             probe /healthz (exit 0/1)",
         "  resolve <cap> [--registry URL]         find + rank nodes by trust",
         "  invoke <cap> [--registry URL] [--input JSON]   call the best node",
+        "  env: PORT HOST PUBLIC_URL PEERS DATABASE_URL ALEPH_LOG_LEVEL (see docs/operators)",
       ].join("\n"),
     );
 }

@@ -110,6 +110,12 @@ importers:
       '@aleph/registry':
         specifier: workspace:*
         version: link:../registry
+      '@aleph/store':
+        specifier: workspace:*
+        version: link:../store
+      '@aleph/transport':
+        specifier: workspace:*
+        version: link:../transport
 
   packages/client:
     dependencies:

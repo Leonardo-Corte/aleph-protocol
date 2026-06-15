@@ -28,7 +28,9 @@
     "@aleph/core": "workspace:*",
     "@aleph/client": "workspace:*",
     "@aleph/node": "workspace:*",
-    "@aleph/registry": "workspace:*"
+    "@aleph/registry": "workspace:*",
+    "@aleph/store": "workspace:*",
+    "@aleph/transport": "workspace:*"
   },
   "scripts": {
     "build": "tsup",
