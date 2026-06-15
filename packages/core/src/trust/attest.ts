@@ -25,7 +25,13 @@ export interface Attestation {
 
 export function createAttestation(
   issuer: Identity,
-  params: { subject: string; settlement: SettlementRecord; rating: number; claim?: string },
+  params: {
+    subject: string;
+    settlement: SettlementRecord;
+    rating: number;
+    claim?: string;
+    ts?: number; // override the timestamp (e.g. importing history); default now
+  },
 ): Attestation {
   // A negative attestation is rating→0, never rating<0: the trust function
   // weights ratings in [0,1], so out-of-range values would silently distort it.
@@ -39,7 +45,7 @@ export function createAttestation(
     settlement: params.settlement,
     rating: params.rating,
     claim: params.claim,
-    ts: Date.now(),
+    ts: params.ts ?? Date.now(),
   };
   const sig = signEd25519(DOMAIN.attestation, base, issuer.privateKey);
   return { ...base, sig };
