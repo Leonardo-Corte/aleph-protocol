@@ -1,0 +1,219 @@
+# AGENTS.md — build continuity & modus operandi
+
+> **Read this first.** This file lets an AI agent (or a human) resume building
+> Aleph at full quality from a cold start — after a context clear, a new session,
+> or a handoff. It captures *what* we're building, *how* we work, *where* things
+> are, the *gotchas* already paid for, and *what's next*. Keep it updated as the
+> source of truth for build state.
+
+---
+
+## 1. What Aleph is (the 30-second version)
+
+Aleph is a **thin-waist protocol for an agent-native web**: it gives software
+agents five verbs they lack today — **FIND, TRUST, ACT, PAY, PROVE** — without a
+human in the loop and without a central authority. Every message is a signed,
+addressed **Envelope** between two DIDs, carrying one of five types
+(`RESOLVE / INVOKE / RECEIPT / ATTEST / SETTLE`). All richness (discovery,
+reputation, settlement, identity) sits in **optional layers above** a tiny
+universal core (the "thin waist": DID + Manifest + Envelope).
+
+The vision/paper lives in `aleph-protocol-paper.md`, the wire spec in
+`aleph-manifest-spec.md`, the from-scratch explainer in `foundations.md`, and the
+production plan in `ROADMAP.md`. Architecture decisions are in `DECISIONS.md`
+(D1–D7 so far). The lineage is the "Operative Ecosystem (ESO)" corpus.
+
+Repo: **https://github.com/Leonardo-Corte/aleph-protocol** (account: Leonardo-Corte).
+
+---
+
+## 2. Modus operandi (HOW we work — follow this exactly)
+
+We build at **production-finished quality, not prototype**. The discipline that
+has kept the build green and trustworthy:
+
+1. **Section → tasks.** Each ROADMAP section is broken into ~6–8 tracked tasks
+   (use TaskCreate/TaskUpdate). Encode dependencies with `addBlockedBy`. Work
+   lowest-id-ready first. Mark in_progress before starting, completed when truly
+   done (gates green).
+2. **One clean commit per sub-phase.** Conventional-commit style subject
+   (`S<n>.<m>: …` or `feat:`/`fix:`), a body explaining *why*, and **always** end
+   with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`. Push after each
+   section (or sooner). Branch is `main` (solo project; committing to main is fine
+   here, but never force-push).
+3. **Gates must be green before commit.** In order:
+   `pnpm -r typecheck` → `pnpm exec eslint …` → `pnpm exec prettier --check …`
+   → `pnpm -r build` → tests → `pnpm test:coverage`. A pre-commit hook
+   (husky + lint-staged) runs format+lint on staged files automatically.
+4. **Tests as the safety net.** Every new behavior gets a test; every security
+   gate gets a *negative* test (prove it bites). Integration tests live in `e2e/`.
+5. **Verify in CI, not just locally.** After push, poll the run
+   (`gh run list --limit 1`, then `gh run view <id>`). CI has caught real bugs
+   local state hid (see Gotchas). Fix forward; keep CI green.
+6. **Honesty over completeness.** When something genuinely belongs to a later
+   section, or can't be verified here, **say so and defer it explicitly** (record
+   in DECISIONS + ROADMAP) rather than shipping something unverified. We did this
+   for `did:pkh` (→ §4 tooling) and the public-testnet deploy (owner's manual
+   step). An honest deferral beats a fragile half-feature.
+7. **The thin waist is near-frozen.** Changes to the Envelope/Manifest/Grant wire
+   format need extra care (and, post-v1, an AIP). Layers evolve freely.
+8. **Decisions the user owns:** anything legal/irreversible/business (license,
+   real-money posture, naming). Ask via AskUserQuestion. Everything technically
+   derivable: decide, document, proceed. The owner chose Apache-2.0 + CC-BY-4.0
+   (the "Foundation" model), testnet-first, on-chain EVM settlement.
+
+Tone with the user: Italian, direct, concise. Explain the *why*, recommend, then
+act. The user wants real production work and is fine with it taking time.
+
+---
+
+## 3. Where things are (repo map)
+
+```
+packages/                      # pnpm workspace, @aleph/* packages
+  core/        @aleph/core      — the thin waist, I/O-FREE. identity (did:key
+               ed25519+secp256k1, did:web), envelope, grant, manifest (signed),
+               replay/NonceChecker, schema, canonical (RFC 8785), signing
+               (domain separation, verifyByDid), keystore (scrypt+AES-GCM),
+               keyring (rotation), resolver, vocabulary, settle/rail (in-memory
+               reference), trust/attest + chain, errors, hash, base58.
+  transport/   @aleph/transport — node:http helpers (readJson, sendJson,
+               asyncHandler, 1MB cap). PRIVATE.
+  node/        @aleph/node      — capability provider runtime. Signs its Manifest;
+               verifies grant+schema+escrow; pluggable stores.
+  registry/    @aleph/registry  — discovery; verifies Manifest sig; RegistryStore;
+               federation (gossip).
+  client/      @aleph/client    — agent SDK (THE target): resolve/resolveRanked/
+               invoke/attest/fetchReputation/compose.
+  mcp/         @aleph/mcp       — Aleph as an MCP server (aleph_resolve/aleph_invoke).
+  cli/         @aleph/cli       — keygen/registry/node/resolve/invoke; EncryptedFileKeyStore.
+  store/       @aleph/store     — async repos (Registry/Nonce/Reputation/Settlement)
+               + drivers: in-memory, SQLite (node:sqlite), Postgres (postgres.js).
+  settle-evm/  @aleph/settle-evm — on-chain rail (viem) against AlephEscrow.
+contracts/                     # Foundry project (gitignored: lib/ out/ cache/)
+  src/AlephEscrow.sol           — ERC-20 escrow (lock/release/refund), immutable.
+  test/*.t.sol                  — Foundry tests incl. reentrancy.
+e2e/                           # cross-package integration + contract tests (node:test)
+  test/*.test.ts                — all real tests live here (per-package test=true noop)
+  fixtures/, store-contract.ts  — shared helpers
+examples/                      # runnable demos (run.ts, network.ts)
+spec/
+  test-vectors/jcs/             — official RFC 8785 vectors (PRETTIER-IGNORED, byte-exact)
+  test-vectors/aleph/signing.json — Ed25519 signing vector
+  aips/                         — AIP process (AIP-0)
+  SETTLEMENT.md                 — on-chain settlement design + deploy procedure
+conformance/python/            — independent Python impl (proves cross-language)
+.github/workflows/ci.yml       — 6 jobs (see §5)
+```
+
+Reading-order docs at root: `foundations.md` → `aleph-protocol-paper.md` →
+`aleph-manifest-spec.md` → `ROADMAP.md`. `DECISIONS.md` = the ADR.
+
+---
+
+## 4. Environment & commands
+
+- **Node 25** (CI matrix 22+24), **pnpm 9.15.9** (`corepack`). **Foundry** at
+  `~/.foundry/bin` (forge/anvil/cast 1.7.1). Python 3 + `cryptography` for the
+  conformance check. `gh` CLI authed as Leonardo-Corte.
+- TypeScript runs natively (no build step to run); packages **build** via tsup
+  (ESM + d.ts). Cross-package types resolve via `paths` → source in each
+  `tsconfig.json` (so typecheck works before build — see Gotchas).
+
+```bash
+pnpm install                      # workspace
+pnpm -r typecheck                 # strict tsc --noEmit, all packages
+pnpm exec eslint "packages/*/src/**/*.ts" "e2e/**/*.ts" "examples/**/*.ts"
+pnpm exec prettier --check "packages/**/*.ts" "e2e/**/*.ts" "examples/**/*.ts"
+pnpm -r build
+node --test "e2e/test/**/*.test.ts"        # the test suite (run from repo root or e2e/)
+pnpm test:coverage                # c8 over built packages; thresholds in .c8rc.json
+# contracts:
+cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --report summary
+# python conformance:
+python3 conformance/python/run_vectors.py
+```
+
+Current state: **60 tests (59 pass, 1 skipped = postgres without DATABASE_URL)**,
+35 commits, all gates green. Coverage thresholds: lines/stmts 88, funcs 75,
+branches 68 (functions lowered because the Postgres/EVM drivers are CI-only).
+
+---
+
+## 5. CI (the merge gate) — `.github/workflows/ci.yml`
+
+Six jobs, all must stay green:
+1. **build & test** (Node 22 + 24): install → typecheck → lint → format → build → test.
+2. **coverage gate**: `pnpm test:coverage`.
+3. **store contract (postgres)**: a postgres:17 service; runs the store contract suite with `DATABASE_URL`.
+4. **cross-language conformance (python)**: `pip install cryptography`; runs `conformance/python/run_vectors.py`.
+5. **contracts (foundry) + on-chain rail**: `forge test` + coverage, then the anvil integration test (`e2e/test/settle-evm.test.ts`).
+
+`release.yml` is **manual** (workflow_dispatch) until npm publishing is set up at launch.
+
+---
+
+## 6. Gotchas already paid for (don't relearn these)
+
+- **`node:sqlite`** must be loaded via `createRequire("node:sqlite")` — bundlers
+  strip the `node:` prefix (it only exists prefixed) and break it.
+- **Prettier vs test vectors**: `spec/test-vectors/` is in `.prettierignore` — the
+  JCS vectors must stay byte-exact or canonicalization tests fail.
+- **Postgres concurrency**: determine first-seen atomically with
+  `RETURNING (xmax = 0)`, never SELECT-then-INSERT (races under real parallelism;
+  in-memory/SQLite serialize and hide it — the Postgres CI job caught it).
+- **CI typechecks before building**, so every package that transitively imports
+  another `@aleph/*` needs that path in its `tsconfig.json` `paths` (else tsc
+  falls back to a not-yet-built dist). Add paths when adding cross-package deps.
+- **Prettier reformats** files between Read and Edit; if an Edit fails "file
+  modified", re-Read or use sed/python for precise swaps.
+- **zsh reserves `status`** — use another var name in bash loops.
+- **anvil in CI**: foundry-toolchain already puts it at `~/.foundry/bin/anvil`;
+  symlink only `if [ ! -e ]`.
+- **Domain separation**: signatures are over `<domain>\n<RFC8785(obj)>`. If you
+  hand-construct a signed object in a test, use `signEd25519(DOMAIN.x, obj, key)`.
+- **Async ripple**: stores, nonce checking, and the EVM rail are async; the
+  in-memory rail is sync. Keep the in-memory default so existing sync paths work;
+  new persistent paths await.
+- Per-package `test` script is `true` (noop); **real tests run from `e2e/`**.
+  When adding a test that needs a dep (viem, etc.), add it to `e2e`'s devDeps.
+
+---
+
+## 7. Status & what's next
+
+**Done:** S0 (decisions) · S1 (monorepo/CI/quality gates) · S2 (persistence:
+async stores + SQLite/Postgres + restart durability) · S3 (hardened core: RFC
+8785, domain separation, signed Manifest, Ed25519+secp256k1, did:web, key
+mgmt/rotation, cross-language proof) · **S4 (on-chain settlement: AlephEscrow +
+viem rail + anvil integration + Foundry CI)**.
+
+**Deferred (tracked):** `did:pkh` (eip155 recovery) → S4-era chain tooling;
+public-testnet deploy of AlephEscrow → owner's manual step (verified on anvil).
+
+**NEXT — Section 5: Reputation & anti-Sybil at scale.** Goal: make the
+reputation layer hold against an adversary manufacturing trust, and scale.
+Per ROADMAP §5:
+- Strengthen anti-Sybil economics: settlement-backed (done) + **diversity
+  weighting** (reputation from many distinct paying counterparties >> many from
+  one; cap per-issuer contribution, e.g. log/sqrt), and document staking as a
+  future AIP.
+- `computeTrust` becomes a **pluggable, consumer-controlled policy** with the
+  default specified; verify each attestation's settlement on-chain where applicable.
+- Reputation **storage/retrieval at scale**: pagination + ETag on `/reputation`,
+  a summary endpoint (counts, distinct issuers, total settled value).
+- **Decay** (recent > ancient), **negative attestations**, **revocation**.
+- Acceptance: a wash-trading simulation (N self-dealing identities) fails to
+  outrank an honest node with diverse real custom; trust is computed from
+  verified settlements; pagination + decay + negatives tested.
+
+Then S6 (registry at scale) closes Milestone M2; M3 = security/observability/deploy.
+
+---
+
+## 8. First moves after a clear
+
+1. `cd /Users/corte/aleph-protocol`; skim this file + the tail of `ROADMAP.md` §5.
+2. `pnpm install && pnpm -r build && node --test "e2e/test/**/*.test.ts"` — confirm green (59 pass / 1 skip).
+3. Create the S5 task plan (TaskCreate), then execute lowest-id-first, committing per sub-phase, pushing, and verifying CI — exactly as §2 describes.
+4. Keep this file current as state advances.
