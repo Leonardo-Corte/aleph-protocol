@@ -6,7 +6,8 @@
 import { randomUUID } from "node:crypto";
 import type { Identity } from "@aleph/core";
 import type { Grant } from "@aleph/core";
-import { verifyManifest, type Manifest } from "@aleph/core";
+import { verifyManifest, type Manifest, type Capability } from "@aleph/core";
+import { validateSchema, type JsonSchema } from "@aleph/core";
 import { createEnvelope, verifyEnvelope, type Envelope } from "@aleph/core";
 import { verifySettlement, type SettlementRail, type SettlementRecord } from "@aleph/core";
 import { createAttestation, computeTrust, type Attestation } from "@aleph/core";
@@ -81,6 +82,24 @@ export async function fetchManifest(url: string, expectedDid?: string): Promise<
   const v = verifyManifest(manifest);
   if (!v.ok) throw new Error(`manifest verification failed: ${v.reason}`);
   return manifest;
+}
+
+// --- Agent-side safety (the consumer's risk) --------------------------------
+// A node can return malicious *content*. A signed RECEIPT proves WHO said it and
+// that it was not altered — it does NOT make the content safe. Capability output
+// is UNTRUSTED input: validate it against the declared output schema and never
+// execute returned content blindly.
+export function verifyOutput(capability: Capability, output: unknown): { ok: boolean; reason?: string } {
+  return validateSchema(capability.schema?.output as JsonSchema | undefined, output);
+}
+
+// Whether an ACT should require explicit PRINCIPAL CONFIRMATION before the agent
+// proceeds: a high-risk or irreversible capability is not auto-run. The agent
+// reads risk/reversibility from the (re-verified) Manifest to gate dangerous calls.
+export function requiresConfirmation(capability: Capability): boolean {
+  if (capability.risk === "high") return true;
+  const rev = (capability.reversibility ?? "").toLowerCase();
+  return rev === "irreversible" || rev === "none";
 }
 
 // ACT + PAY + PROVE — invoke a capability, paying via escrow if requested,
