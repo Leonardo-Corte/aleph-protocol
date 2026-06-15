@@ -31,7 +31,11 @@ import {
   RateLimiter,
   clientIp,
   hardenServer,
+  createLogger,
+  traceIdFrom,
+  MetricsRegistry,
   type RateLimitOptions,
+  type Logger,
 } from "@aleph/transport";
 
 interface CapabilitySpec {
@@ -55,6 +59,10 @@ export interface NodeOptions {
   // Token-bucket rate limit per IP and per caller DID. Generous default; tune
   // down (or up) per deployment. The basic flood/DoS defense.
   rateLimit?: RateLimitOptions;
+  // Observability: a structured logger (default silent unless ALEPH_LOG_LEVEL)
+  // and a metrics registry (its counters/histograms are served at /metrics).
+  logger?: Logger;
+  metrics?: MetricsRegistry;
 }
 
 export function createNode(opts: NodeOptions) {
@@ -62,6 +70,12 @@ export function createNode(opts: NodeOptions) {
   const baseUrl = `http://127.0.0.1:${port}`;
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
   const limiter = new RateLimiter(opts.rateLimit ?? { capacity: 2000, refillPerSec: 200 });
+  const log = (opts.logger ?? createLogger()).child({ service: "node", node: identity.did });
+  const metrics = opts.metrics ?? new MetricsRegistry();
+  const reqs = metrics.counter("aleph_requests_total", "requests by service and outcome");
+  const invokes = metrics.counter("aleph_invoke_total", "INVOKEs by outcome");
+  const errors = metrics.counter("aleph_errors_total", "errors by AlephErrorCode");
+  const latency = metrics.histogram("aleph_request_ms", "request latency in ms");
 
   // The node's reputation store holds the verified attestations written about
   // it. Trust is computed by the consumer from these raw facts — the node only
@@ -119,15 +133,31 @@ export function createNode(opts: NodeOptions) {
   }
 
   const reject = (res: ServerResponse, invoke: Envelope, e: AlephError) => {
+    invokes.inc({ outcome: "rejected" });
+    errors.inc({ code: e.code });
     sendReceipt(res, invoke, "rejected", { error: e });
   };
 
   const server = http.createServer(
     asyncHandler(async (req, res) => {
+      // Per-request structured logging, correlated by a trace id propagated from
+      // the caller (agent → node), so one operation is followable end to end.
+      const trace = traceIdFrom(req);
+      const reqLog = log.child({ trace, method: req.method, url: req.url });
+      const startedAt = performance.now();
+      reqLog.debug("request");
       try {
         // Abuse defense: per-IP token bucket in front of every endpoint.
         if (!limiter.allow("ip:" + clientIp(req))) {
+          errors.inc({ code: "RATE_LIMITED" });
+          reqLog.warn("rate_limited");
           sendJson(res, 429, { error: err("RATE_LIMITED", "rate limit exceeded") });
+          return;
+        }
+        // Metrics scrape endpoint (Prometheus text format).
+        if (req.method === "GET" && req.url === "/metrics") {
+          res.writeHead(200, { "content-type": "text/plain; version=0.0.4" });
+          res.end(metrics.render());
           return;
         }
         if (req.method === "GET" && req.url === "/manifest") {
@@ -309,18 +339,33 @@ export function createNode(opts: NodeOptions) {
             const { output } = cap.handler(input);
             const settlement = escrowId && opts.rail ? opts.rail.release(escrowId) : undefined;
             if (settlement) await settlements?.record(settlement);
+            invokes.inc({ outcome: "success" });
+            if (settlement)
+              metrics.counter("aleph_settlements_total", "settlements by status").inc({ status: "released" });
+            reqLog.info("invoke", { capability: capName, from: env.from, outcome: "success" });
             sendReceipt(res, env, "success", output, settlement);
             return;
           } catch (e) {
             const refund = escrowId && opts.rail ? opts.rail.refund(escrowId) : undefined;
             if (refund) await settlements?.record(refund);
+            invokes.inc({ outcome: "failure" });
+            if (refund)
+              metrics.counter("aleph_settlements_total", "settlements by status").inc({ status: "refunded" });
+            reqLog.warn("invoke", { capability: capName, from: env.from, outcome: "failure" });
             sendReceipt(res, env, "failure", { error: err("INTERNAL", (e as Error).message) }, refund);
             return;
           }
         }
         sendJson(res, 404, { error: err("WRONG_TYPE", "not found") });
       } catch (e) {
+        errors.inc({ code: "INTERNAL" });
+        reqLog.error("handler_error", { err: (e as Error).message });
         sendJson(res, 500, { error: err("INTERNAL", (e as Error).message) });
+      } finally {
+        const ms = performance.now() - startedAt;
+        reqs.inc({ service: "node" });
+        latency.observe({ service: "node" }, ms);
+        reqLog.debug("response", { ms: Math.round(ms) });
       }
     }),
   );

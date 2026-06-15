@@ -24,7 +24,11 @@ import {
   RateLimiter,
   clientIp,
   hardenServer,
+  createLogger,
+  traceIdFrom,
+  MetricsRegistry,
   type RateLimitOptions,
+  type Logger,
 } from "@aleph/transport";
 
 // Best-effort fetch of a node's reputation summary, kept as a COARSE discovery
@@ -68,6 +72,9 @@ export function createRegistry(opts: {
   resolveCacheTtlMs?: number;
   // Token-bucket rate limit per IP and per caller DID. Generous default.
   rateLimit?: RateLimitOptions;
+  // Observability: structured logger + metrics registry (served at /metrics).
+  logger?: Logger;
+  metrics?: MetricsRegistry;
 }) {
   const store: RegistryStore = opts.store ?? new InMemoryRegistryStore();
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
@@ -75,6 +82,13 @@ export function createRegistry(opts: {
   const fetchSummary = opts.fetchSummary ?? defaultFetchSummary;
   const cacheTtl = opts.resolveCacheTtlMs ?? 1000;
   const limiter = new RateLimiter(opts.rateLimit ?? { capacity: 5000, refillPerSec: 500 });
+  const log = (opts.logger ?? createLogger()).child({ service: "registry" });
+  const metrics = opts.metrics ?? new MetricsRegistry();
+  const reqs = metrics.counter("aleph_requests_total", "requests by service and outcome");
+  const resolves = metrics.counter("aleph_resolve_total", "RESOLVEs served");
+  const registrations = metrics.counter("aleph_registrations_total", "node registrations indexed");
+  const errors = metrics.counter("aleph_errors_total", "errors by AlephErrorCode");
+  const latency = metrics.histogram("aleph_request_ms", "request latency in ms");
 
   // A tiny read cache for hot capabilities: discovery is read-heavy and writes
   // are comparatively rare, so cache resolves briefly and drop the whole cache
@@ -140,10 +154,22 @@ export function createRegistry(opts: {
 
   const server = http.createServer(
     asyncHandler(async (req, res) => {
+      const trace = traceIdFrom(req);
+      const reqLog = log.child({ trace, method: req.method, url: req.url });
+      const startedAt = performance.now();
+      reqLog.debug("request");
       try {
         // Abuse defense: per-IP token bucket in front of every endpoint.
         if (!limiter.allow("ip:" + clientIp(req))) {
+          errors.inc({ code: "RATE_LIMITED" });
+          reqLog.warn("rate_limited");
           sendJson(res, 429, { error: err("RATE_LIMITED", "rate limit exceeded") });
+          return;
+        }
+        // Metrics scrape endpoint (Prometheus text format).
+        if (req.method === "GET" && req.url === "/metrics") {
+          res.writeHead(200, { "content-type": "text/plain; version=0.0.4" });
+          res.end(metrics.render());
           return;
         }
         // Anti-entropy feed: registrations since `rev`, oldest-first, so a peer
@@ -174,6 +200,8 @@ export function createRegistry(opts: {
           const rep = manifest.reputation ? await fetchSummary(manifest.reputation) : undefined;
           const added = await store.upsertNode(manifest, manifestUrl, rep);
           invalidateCache(); // a write may change any cached resolve
+          registrations.inc({ first_seen: String(added) });
+          reqLog.info("register", { did: manifest.identity, firstSeen: added });
           // Propagate first-seen registrations to peers (not re-propagating gossip).
           if (added && !body.gossiped) await gossip(manifest, manifestUrl);
           sendJson(res, 200, { ok: true });
@@ -194,6 +222,8 @@ export function createRegistry(opts: {
           }
           // per-DID rate limit (an authenticated flood from one caller)
           if (!limiter.allow("did:" + env.from)) {
+            errors.inc({ code: "RATE_LIMITED" });
+            reqLog.warn("rate_limited", { from: env.from });
             sendJson(res, 429, { error: err("RATE_LIMITED", "rate limit exceeded") });
             return;
           }
@@ -202,13 +232,22 @@ export function createRegistry(opts: {
           // agent pulls fewer candidates by filtering + paginating server-side.
           const filter = (env.body.filter as ResolveFilter | undefined) ?? {};
           const page = await cachedResolve(capability, filter);
+          resolves.inc({});
+          reqLog.debug("resolve", { capability, from: env.from, results: page.results.length });
           sendJson(res, 200, { results: page.results, nextCursor: page.nextCursor });
           return;
         }
 
         sendJson(res, 404, { error: err("WRONG_TYPE", "not found") });
       } catch (e) {
+        errors.inc({ code: "INTERNAL" });
+        reqLog.error("handler_error", { err: (e as Error).message });
         sendJson(res, 500, { error: err("INTERNAL", (e as Error).message) });
+      } finally {
+        const ms = performance.now() - startedAt;
+        reqs.inc({ service: "registry" });
+        latency.observe({ service: "registry" }, ms);
+        reqLog.debug("response", { ms: Math.round(ms) });
       }
     }),
   );
