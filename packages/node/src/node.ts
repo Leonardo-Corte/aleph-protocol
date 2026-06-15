@@ -113,7 +113,21 @@ export function createNode(opts: NodeOptions) {
     asyncHandler(async (req, res) => {
       try {
         if (req.method === "GET" && req.url === "/manifest") {
-          sendJson(res, 200, manifest);
+          // The Manifest is signed once at startup; its signature uniquely
+          // identifies its content, so it makes a stable ETag. A re-fetch with a
+          // matching If-None-Match is a cheap 304 (agents re-resolve often).
+          const etag = `"man-${manifest.sig?.slice(0, 24) ?? "0"}"`;
+          if (req.headers["if-none-match"] === etag) {
+            res.writeHead(304, { etag });
+            res.end();
+            return;
+          }
+          res.writeHead(200, {
+            "content-type": "application/json",
+            etag,
+            "cache-control": "public, max-age=60",
+          });
+          res.end(JSON.stringify(manifest));
           return;
         }
         const url = new URL(req.url ?? "/", baseUrl);

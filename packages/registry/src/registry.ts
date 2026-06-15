@@ -14,6 +14,7 @@ import {
   type RegistryStore,
   type RepHint,
   type ResolveFilter,
+  type ResolvePage,
   type RegistrationDelta,
 } from "@aleph/store";
 import { readJson, sendJson, asyncHandler } from "@aleph/transport";
@@ -55,11 +56,30 @@ export function createRegistry(opts: {
   // If set, periodically pull deltas from peers (anti-entropy). Tests call
   // reconcile() directly for determinism; production sets an interval.
   reconcileIntervalMs?: number;
+  // Short-TTL read cache for hot capability resolves (ms). 0 disables it.
+  resolveCacheTtlMs?: number;
 }) {
   const store: RegistryStore = opts.store ?? new InMemoryRegistryStore();
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
   const peers = opts.peers ?? [];
   const fetchSummary = opts.fetchSummary ?? defaultFetchSummary;
+  const cacheTtl = opts.resolveCacheTtlMs ?? 1000;
+
+  // A tiny read cache for hot capabilities: discovery is read-heavy and writes
+  // are comparatively rare, so cache resolves briefly and drop the whole cache
+  // on any write (register/reconcile). Bounded staleness = TTL; correctness on
+  // write = full invalidation.
+  const resolveCache = new Map<string, { at: number; page: ResolvePage }>();
+  const invalidateCache = () => resolveCache.clear();
+  async function cachedResolve(capability: string, filter: ResolveFilter): Promise<ResolvePage> {
+    if (cacheTtl <= 0) return store.resolveByCapability(capability, filter);
+    const key = capability + "|" + JSON.stringify(filter);
+    const hit = resolveCache.get(key);
+    if (hit && Date.now() - hit.at < cacheTtl) return hit.page;
+    const page = await store.resolveByCapability(capability, filter);
+    resolveCache.set(key, { at: Date.now(), page });
+    return page;
+  }
 
   // Anti-entropy state: how far we have caught up on each peer's feed. Gossip-on-
   // write is best-effort (a peer may be offline); periodic reconcile is the
@@ -95,6 +115,7 @@ export function createRegistry(opts: {
         for (const d of changes ?? []) {
           if (verifyManifest(d.manifest).ok) {
             await store.upsertNode(d.manifest, d.manifestUrl);
+            invalidateCache();
             pulled++;
           }
           peerCursor.set(peer, Math.max(peerCursor.get(peer) ?? 0, d.rev));
@@ -136,6 +157,7 @@ export function createRegistry(opts: {
           // Best-effort reputation hint for discovery pre-filtering (never fatal).
           const rep = manifest.reputation ? await fetchSummary(manifest.reputation) : undefined;
           const added = await store.upsertNode(manifest, manifestUrl, rep);
+          invalidateCache(); // a write may change any cached resolve
           // Propagate first-seen registrations to peers (not re-propagating gossip).
           if (added && !body.gossiped) await gossip(manifest, manifestUrl);
           sendJson(res, 200, { ok: true });
@@ -158,7 +180,7 @@ export function createRegistry(opts: {
           // Optional selectivity pushed to the registry (pull-not-push): the
           // agent pulls fewer candidates by filtering + paginating server-side.
           const filter = (env.body.filter as ResolveFilter | undefined) ?? {};
-          const page = await store.resolveByCapability(capability, filter);
+          const page = await cachedResolve(capability, filter);
           sendJson(res, 200, { results: page.results, nextCursor: page.nextCursor });
           return;
         }
