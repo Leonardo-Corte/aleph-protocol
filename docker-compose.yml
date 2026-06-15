@@ -1,0 +1,44 @@
+# Local full-stack: registry + node + Postgres, one command:  docker compose up
+# The registry and node are the same image with different commands. Postgres
+# persists the registry index, reputation, nonces, and settlement history.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: aleph
+      POSTGRES_PASSWORD: aleph
+      POSTGRES_DB: aleph
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aleph"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # not published to the host by default — only the services reach it
+
+  registry:
+    build: .
+    command: ["node", "packages/cli/dist/cli.js", "registry"]
+    environment:
+      PORT: "4000"
+      HOST: "0.0.0.0"
+      DATABASE_URL: "postgres://aleph:aleph@postgres:5432/aleph"
+      ALEPH_LOG_LEVEL: "info"
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  node:
+    build: .
+    command: ["node", "packages/cli/dist/cli.js", "node", "--registry", "http://registry:4000"]
+    environment:
+      PORT: "4100"
+      HOST: "0.0.0.0"
+      PUBLIC_URL: "http://node:4100"
+      ALEPH_LOG_LEVEL: "info"
+      REGISTRY_URL: "http://registry:4000"
+    ports:
+      - "4100:4100"
+    depends_on:
+      - registry

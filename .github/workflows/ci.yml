@@ -143,3 +143,11 @@ jobs:
           mkdir -p "$HOME/.foundry/bin"
           if [ ! -e "$HOME/.foundry/bin/anvil" ]; then ln -s "$(which anvil)" "$HOME/.foundry/bin/anvil"; fi
           node --test "e2e/test/settle-evm.test.ts"
+
+  secret-scan:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Scan tracked files for secrets
+        run: node scripts/secret-scan.mjs

@@ -1,0 +1,12 @@
+# Force a clean install + build inside the image (don't ship host artifacts).
+node_modules
+**/node_modules
+**/dist
+coverage
+.git
+.github
+contracts/lib
+contracts/out
+contracts/cache
+**/*.log
+.DS_Store
