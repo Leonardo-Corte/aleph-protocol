@@ -223,7 +223,13 @@ export function createNode(opts: NodeOptions) {
               reject(res, env, err("GRANT_REQUIRED", "this capability requires a grant"));
               return;
             }
-            const g = verifyGrant(grant, { grantee: env.from, capability: capName });
+            // Enforce the capability-scoped payment limit JOINTLY with the
+            // escrow: the amount checked here is the price the node will settle.
+            const g = verifyGrant(grant, {
+              grantee: env.from,
+              capability: capName,
+              amountEur: cap.priceEur,
+            });
             if (!g.ok) {
               reject(res, env, err("GRANT_INVALID", g.reason ?? "grant invalid"));
               return;
