@@ -12,6 +12,15 @@ import { createEnvelope, verifyEnvelope, type Envelope } from "@aleph/core";
 import { verifySettlement, type SettlementRail, type SettlementRecord } from "@aleph/core";
 import { createAttestation, computeTrust, type Attestation } from "@aleph/core";
 
+// Trace correlation: the agent stamps a trace id on its outbound calls so one
+// logical operation is followable across registry and node logs end to end.
+// (Header name matches @aleph/transport's TRACE_HEADER; declared here to keep
+// the SDK free of a server-side dependency.)
+const TRACE_HEADER = "x-aleph-trace";
+function newTrace(): string {
+  return randomUUID().replace(/-/g, "");
+}
+
 // The aggregate reputation summary as served on the wire by a node. Declared
 // here (not imported from @aleph/store) so the agent SDK stays free of any
 // server-side storage dependency — it only consumes this JSON response.
@@ -51,6 +60,7 @@ export async function resolve(
   capability: string,
   agent: Identity,
   filter: ResolveFilter = {},
+  trace: string = newTrace(),
 ): Promise<{ results: Pointer[]; nextCursor?: string }> {
   const env = createEnvelope(
     { from: agent.did, to: "did:aleph:registry", type: "RESOLVE", body: { capability, filter } },
@@ -58,7 +68,7 @@ export async function resolve(
   );
   const res = await fetch(registryUrl + "/aleph", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", [TRACE_HEADER]: trace },
     body: JSON.stringify(env),
   });
   const json = (await res.json()) as { results?: Pointer[]; nextCursor?: string };
@@ -114,6 +124,7 @@ export async function invoke(opts: {
   rail?: SettlementRail;
   payEur?: number;
   prev?: string[];
+  trace?: string; // correlation id propagated to the node (and onward)
 }): Promise<{ result: unknown; outcome: unknown; receipt: Envelope; settlement?: SettlementRecord }> {
   // PAY — lock funds in escrow before invoking (pay-on-delivery).
   let payment: { rail: string; escrow: string; amount: number } | undefined;
@@ -141,7 +152,7 @@ export async function invoke(opts: {
   );
   const res = await fetch(opts.endpoint, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", [TRACE_HEADER]: opts.trace ?? newTrace() },
     body: JSON.stringify(env),
   });
   const receipt = (await res.json()) as Envelope;

@@ -4,8 +4,10 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { resolve, invoke } from "@aleph/client";
 import { generateIdentity } from "@aleph/core";
 import { createNode } from "@aleph/node";
+import { createRegistry } from "@aleph/registry";
 import { createLogger, MetricsRegistry } from "@aleph/transport";
 
 test("logger: structured JSON, level filtering, and SECRET redaction", () => {
@@ -95,5 +97,63 @@ test("node: /metrics endpoint reflects served requests, with correlated logs", a
     assert.ok(served.length > 0, "expected trace-correlated node logs");
   } finally {
     await node.close();
+  }
+});
+
+test("tracing: the same trace id flows agent → registry → node logs", async () => {
+  const regLines: Record<string, unknown>[] = [];
+  const nodeLines: Record<string, unknown>[] = [];
+  const registry = createRegistry({
+    port: 4721,
+    logger: createLogger({
+      level: "debug",
+      sink: (l) => regLines.push(JSON.parse(l) as Record<string, unknown>),
+    }),
+  });
+  await registry.listen();
+  const node = createNode({
+    identity: generateIdentity(),
+    port: 4722,
+    capabilities: {
+      "math.add": { handler: (i) => ({ output: { sum: (i.a as number) + (i.b as number) } }) },
+    },
+    logger: createLogger({
+      level: "debug",
+      sink: (l) => nodeLines.push(JSON.parse(l) as Record<string, unknown>),
+    }),
+  });
+  await node.listen();
+  try {
+    await fetch(registry.url + "/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ manifest: node.manifest, manifestUrl: node.url + "/manifest" }),
+    });
+
+    const agent = generateIdentity();
+    const TRACE = "abc123def456abc123def456abc12300";
+    // FIND at the registry, then ACT at the node — both stamped with one trace
+    await resolve(registry.url, "math.add", agent, {}, TRACE);
+    await invoke({
+      nodeDid: node.manifest.identity,
+      endpoint: node.url + "/aleph",
+      capability: "math.add",
+      input: { a: 2, b: 3 },
+      agent,
+      trace: TRACE,
+    });
+
+    // the single operation is followable across both services by its trace id
+    assert.ok(
+      regLines.some((l) => l.trace === TRACE && l.service === "registry"),
+      "registry logged the trace",
+    );
+    assert.ok(
+      nodeLines.some((l) => l.trace === TRACE && l.service === "node"),
+      "node logged the trace",
+    );
+  } finally {
+    await node.close();
+    await registry.close();
   }
 });
