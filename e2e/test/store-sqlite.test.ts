@@ -36,7 +36,7 @@ test("[sqlite] data persists across reopen (restart)", async () => {
     // reopen the same file — a fresh process would do exactly this
     const s2 = new SqliteStores(file);
     await s2.migrate();
-    const found = await s2.registry.resolveByCapability("math.add", 10);
+    const found = (await s2.registry.resolveByCapability("math.add", { limit: 10 })).results;
     assert.equal(found.length, 1, "node survived restart");
     assert.equal(found[0]?.did, node.did);
     // the nonce is still remembered → replay still blocked across restart

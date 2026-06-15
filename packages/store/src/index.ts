@@ -10,8 +10,12 @@ export type {
   Stores,
   AttestationPage,
   ReputationSummary,
+  RepHint,
+  ResolveFilter,
+  ResolvePage,
+  RegistrationDelta,
 } from "./interfaces";
-export { REPUTATION_PAGE_SIZE } from "./interfaces";
+export { REPUTATION_PAGE_SIZE, RESOLVE_PAGE_SIZE } from "./interfaces";
 
 export {
   InMemoryStores,

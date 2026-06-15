@@ -28,12 +28,31 @@ export interface Pointer {
   manifest: string;
   summary: string;
   reputation?: string;
+  price?: number; // price of the matched capability (numeric)
+  region?: string; // node region, if declared
+  rep?: { count: number; distinctIssuers: number; totalSettledValue: number }; // coarse hint
 }
 
-// FIND — ask a registry "who does X?"
-export async function resolve(registryUrl: string, capability: string, agent: Identity): Promise<Pointer[]> {
+// Selectivity the agent can push to the registry so it pulls fewer candidates.
+export interface ResolveFilter {
+  limit?: number;
+  cursor?: string;
+  maxPrice?: number;
+  region?: string;
+  minIssuers?: number;
+  minSettled?: number;
+}
+
+// FIND — ask a registry "who does X?", optionally filtered + paginated. Returns
+// the page of pointers plus a `nextCursor` to fetch the following page.
+export async function resolve(
+  registryUrl: string,
+  capability: string,
+  agent: Identity,
+  filter: ResolveFilter = {},
+): Promise<{ results: Pointer[]; nextCursor?: string }> {
   const env = createEnvelope(
-    { from: agent.did, to: "did:aleph:registry", type: "RESOLVE", body: { capability } },
+    { from: agent.did, to: "did:aleph:registry", type: "RESOLVE", body: { capability, filter } },
     agent.privateKey,
   );
   const res = await fetch(registryUrl + "/aleph", {
@@ -41,8 +60,8 @@ export async function resolve(registryUrl: string, capability: string, agent: Id
     headers: { "content-type": "application/json" },
     body: JSON.stringify(env),
   });
-  const json = (await res.json()) as { results?: Pointer[] };
-  return json.results ?? [];
+  const json = (await res.json()) as { results?: Pointer[]; nextCursor?: string };
+  return { results: json.results ?? [], nextCursor: json.nextCursor };
 }
 
 // Fetch the full Manifest — only for a shortlisted candidate (lazy).
@@ -174,8 +193,9 @@ export async function resolveRanked(
   registryUrl: string,
   capability: string,
   agent: Identity,
+  filter: ResolveFilter = {},
 ): Promise<(Pointer & { trust: number; attestations: number })[]> {
-  const pointers = await resolve(registryUrl, capability, agent);
+  const { results: pointers } = await resolve(registryUrl, capability, agent, filter);
   const ranked = await Promise.all(
     pointers.map(async (p) => {
       if (!p.reputation) return { ...p, trust: 0, attestations: 0 };

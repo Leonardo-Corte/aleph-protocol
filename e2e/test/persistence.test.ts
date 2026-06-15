@@ -103,7 +103,7 @@ test("registry, reputation, settlements, and nonces survive a restart (SQLite)",
 
     try {
       // the node is still discoverable in the registry
-      const found = await resolve(registry2.url, "math.add", generateIdentity());
+      const found = (await resolve(registry2.url, "math.add", generateIdentity())).results;
       assert.equal(found.length, 1, "registered node survived restart");
       assert.equal(found[0]?.did, nodeId.did);
 

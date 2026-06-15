@@ -37,7 +37,7 @@ server.registerTool(
     },
   },
   async ({ capability, registryUrl }) => {
-    const results = await resolve(registryUrl ?? DEFAULT_REGISTRY, capability, agent);
+    const { results } = await resolve(registryUrl ?? DEFAULT_REGISTRY, capability, agent);
     return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
   },
 );
@@ -56,7 +56,7 @@ server.registerTool(
     },
   },
   async ({ capability, input, maxEur, registryUrl }) => {
-    const results = await resolve(registryUrl ?? DEFAULT_REGISTRY, capability, agent);
+    const { results } = await resolve(registryUrl ?? DEFAULT_REGISTRY, capability, agent);
     const chosen = results[0];
     if (!chosen) {
       return { content: [{ type: "text", text: `No Aleph node found for "${capability}".` }], isError: true };

@@ -9,8 +9,29 @@ import type { Envelope, NonceChecker } from "@aleph/core";
 import { NonceStore, verifyReceived } from "@aleph/core";
 import { verifyManifest, type Manifest } from "@aleph/core";
 import { err } from "@aleph/core";
-import { InMemoryRegistryStore, type RegistryStore } from "@aleph/store";
+import { InMemoryRegistryStore, type RegistryStore, type RepHint, type ResolveFilter } from "@aleph/store";
 import { readJson, sendJson, asyncHandler } from "@aleph/transport";
+
+// Best-effort fetch of a node's reputation summary, kept as a COARSE discovery
+// hint (the agent still computes real trust). Any failure → no hint; discovery
+// must never block on a slow or absent reputation endpoint.
+async function defaultFetchSummary(reputationUrl: string): Promise<RepHint | undefined> {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 2000);
+    const res = await fetch(reputationUrl + "/summary", { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return undefined;
+    const s = (await res.json()) as Partial<RepHint>;
+    return {
+      count: s.count ?? 0,
+      distinctIssuers: s.distinctIssuers ?? 0,
+      totalSettledValue: s.totalSettledValue ?? 0,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 // Federated registries gossip registrations to peers, so a RESOLVE to any
 // registry yields a comparable view. No registry is authoritative — discovery
@@ -23,10 +44,13 @@ export function createRegistry(opts: {
   peers?: string[];
   store?: RegistryStore;
   nonceStore?: NonceChecker;
+  // Injectable for tests; defaults to a real best-effort HTTP fetch.
+  fetchSummary?: (reputationUrl: string) => Promise<RepHint | undefined>;
 }) {
   const store: RegistryStore = opts.store ?? new InMemoryRegistryStore();
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
   const peers = opts.peers ?? [];
+  const fetchSummary = opts.fetchSummary ?? defaultFetchSummary;
 
   async function gossip(manifest: Manifest, manifestUrl: string): Promise<void> {
     await Promise.allSettled(
@@ -57,7 +81,9 @@ export function createRegistry(opts: {
             sendJson(res, 400, { error: err("ENVELOPE_INVALID", v.reason ?? "bad manifest") });
             return;
           }
-          const added = await store.upsertNode(manifest, manifestUrl);
+          // Best-effort reputation hint for discovery pre-filtering (never fatal).
+          const rep = manifest.reputation ? await fetchSummary(manifest.reputation) : undefined;
+          const added = await store.upsertNode(manifest, manifestUrl, rep);
           // Propagate first-seen registrations to peers (not re-propagating gossip).
           if (added && !body.gossiped) await gossip(manifest, manifestUrl);
           sendJson(res, 200, { ok: true });
@@ -77,8 +103,11 @@ export function createRegistry(opts: {
             return;
           }
           const capability = env.body.capability as string;
-          const results = await store.resolveByCapability(capability, 50);
-          sendJson(res, 200, { results });
+          // Optional selectivity pushed to the registry (pull-not-push): the
+          // agent pulls fewer candidates by filtering + paginating server-side.
+          const filter = (env.body.filter as ResolveFilter | undefined) ?? {};
+          const page = await store.resolveByCapability(capability, filter);
+          sendJson(res, 200, { results: page.results, nextCursor: page.nextCursor });
           return;
         }
 

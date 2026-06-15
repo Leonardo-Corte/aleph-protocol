@@ -14,8 +14,13 @@ import type {
   Pointer,
   AttestationPage,
   ReputationSummary,
+  RepHint,
+  ResolveFilter,
+  ResolvePage,
+  RegistrationDelta,
 } from "./interfaces";
-import { REPUTATION_PAGE_SIZE } from "./interfaces";
+import { REPUTATION_PAGE_SIZE, RESOLVE_PAGE_SIZE } from "./interfaces";
+import { capPrice, manifestRegion } from "./registry-util";
 
 // Minimal structural type for the postgres.js tagged-template client we use.
 type Sql = ((strings: TemplateStringsArray, ...values: unknown[]) => Promise<Row[]>) & {
@@ -31,13 +36,21 @@ CREATE TABLE IF NOT EXISTS nodes (
   manifest_url   TEXT NOT NULL,
   manifest_json  JSONB NOT NULL,
   reputation_url TEXT,
+  region         TEXT,
+  rep_count      INTEGER NOT NULL DEFAULT 0,
+  rep_issuers    INTEGER NOT NULL DEFAULT 0,
+  rep_settled    DOUBLE PRECISION NOT NULL DEFAULT 0,
+  rev            BIGINT NOT NULL DEFAULT 0,
   first_seen     TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_seen      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_nodes_rev ON nodes (rev);
+CREATE SEQUENCE IF NOT EXISTS registry_rev_seq;
 CREATE TABLE IF NOT EXISTS node_capabilities (
   did        TEXT NOT NULL REFERENCES nodes(did) ON DELETE CASCADE,
   capability TEXT NOT NULL,
   risk       TEXT,
+  price      DOUBLE PRECISION NOT NULL DEFAULT 0,
   seq        BIGINT NOT NULL,
   PRIMARY KEY (did, capability)
 );
@@ -101,44 +114,101 @@ export class PostgresStores implements Stores {
 class PgRegistryStore implements RegistryStore {
   constructor(private sql: Sql) {}
 
-  async upsertNode(manifest: Manifest, manifestUrl: string): Promise<boolean> {
-    const seq = Date.now();
+  async upsertNode(manifest: Manifest, manifestUrl: string, rep?: RepHint): Promise<boolean> {
+    // Monotonic, concurrency-safe feed revision from a sequence — used both as
+    // capability seq and as the anti-entropy /since cursor. Every upsert (insert
+    // OR update) advances it, so peers receive updates too, not just inserts.
+    const [revRow] = await this.sql`SELECT nextval('registry_rev_seq')::bigint AS rev`;
+    const rev = Number(revRow?.rev ?? 0);
     // Determine first-seen ATOMICALLY from the insert itself — never via a prior
     // SELECT, which races under real concurrency (parallel callers all read
     // "not exists" before any commits). `xmax = 0` is true only for a freshly
     // inserted row, false for the ON CONFLICT update path — so exactly one of N
     // concurrent upserts reports first-seen.
     const rows = await this.sql`
-      INSERT INTO nodes (did, manifest_url, manifest_json, reputation_url)
-      VALUES (${manifest.identity}, ${manifestUrl}, ${this.sql.json(manifest)}, ${manifest.reputation ?? null})
+      INSERT INTO nodes (did, manifest_url, manifest_json, reputation_url, region, rep_count, rep_issuers, rep_settled, rev)
+      VALUES (${manifest.identity}, ${manifestUrl}, ${this.sql.json(manifest)}, ${manifest.reputation ?? null},
+              ${manifestRegion(manifest) ?? null}, ${rep?.count ?? 0}, ${rep?.distinctIssuers ?? 0}, ${rep?.totalSettledValue ?? 0}, ${rev})
       ON CONFLICT (did) DO UPDATE SET manifest_url = EXCLUDED.manifest_url,
-        manifest_json = EXCLUDED.manifest_json, reputation_url = EXCLUDED.reputation_url, last_seen = now()
+        manifest_json = EXCLUDED.manifest_json, reputation_url = EXCLUDED.reputation_url,
+        region = EXCLUDED.region,
+        rep_count = CASE WHEN ${rep ? true : false} THEN EXCLUDED.rep_count ELSE nodes.rep_count END,
+        rep_issuers = CASE WHEN ${rep ? true : false} THEN EXCLUDED.rep_issuers ELSE nodes.rep_issuers END,
+        rep_settled = CASE WHEN ${rep ? true : false} THEN EXCLUDED.rep_settled ELSE nodes.rep_settled END,
+        rev = EXCLUDED.rev, last_seen = now()
       RETURNING (xmax = 0) AS inserted`;
     const firstSeen = rows[0]?.inserted === true;
     for (const cap of manifest.capabilities) {
       await this.sql`
-        INSERT INTO node_capabilities (did, capability, risk, seq)
-        VALUES (${manifest.identity}, ${cap.key}, ${cap.risk ?? "low"}, ${seq})
-        ON CONFLICT (did, capability) DO UPDATE SET risk = EXCLUDED.risk, seq = EXCLUDED.seq`;
+        INSERT INTO node_capabilities (did, capability, risk, price, seq)
+        VALUES (${manifest.identity}, ${cap.key}, ${cap.risk ?? "low"}, ${capPrice(cap)}, ${rev})
+        ON CONFLICT (did, capability) DO UPDATE SET risk = EXCLUDED.risk, price = EXCLUDED.price, seq = EXCLUDED.seq`;
     }
     return firstSeen;
   }
   // (the SELECT-then-insert race above was caught by the Postgres concurrency
   // test in CI — exactly the kind of bug serialized in-memory/SQLite hide.)
 
-  async resolveByCapability(capability: string, limit: number): Promise<Pointer[]> {
+  async resolveByCapability(capability: string, filter: ResolveFilter = {}): Promise<ResolvePage> {
+    const limit = filter.limit ?? RESOLVE_PAGE_SIZE;
+    const before = filter.cursor ? Number(filter.cursor) : Number.MAX_SAFE_INTEGER;
+    const maxPrice = filter.maxPrice ?? null;
+    const region = filter.region ?? null;
+    const minIssuers = filter.minIssuers ?? null;
+    const minSettled = filter.minSettled ?? null;
+    // Optional filters expressed as "param IS NULL OR <predicate>" so the query
+    // stays a single prepared statement (no string concatenation).
     const rows = await this.sql`
-      SELECT n.did AS did, n.manifest_url AS manifest, n.reputation_url AS reputation,
-             c.risk AS risk, c.capability AS capability
+      SELECT n.did AS did, n.manifest_url AS manifest, n.reputation_url AS reputation, n.region AS region,
+             n.rep_count AS rep_count, n.rep_issuers AS rep_issuers, n.rep_settled AS rep_settled, n.rev AS rev,
+             c.risk AS risk, c.price AS price, c.capability AS capability
       FROM node_capabilities c JOIN nodes n ON n.did = c.did
-      WHERE c.capability = ${capability} ORDER BY c.seq DESC LIMIT ${limit}`;
+      WHERE c.capability = ${capability} AND n.rev < ${before}
+        AND (${maxPrice}::float8 IS NULL OR c.price <= ${maxPrice})
+        AND (${region}::text IS NULL OR n.region = ${region})
+        AND (${minIssuers}::int IS NULL OR n.rep_issuers >= ${minIssuers})
+        AND (${minSettled}::float8 IS NULL OR n.rep_settled >= ${minSettled})
+      ORDER BY n.rev DESC LIMIT ${limit + 1}`;
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page[page.length - 1];
+    return {
+      results: page.map((r) => toPointer(r)),
+      nextCursor: hasMore && last ? String(last.rev) : undefined,
+    };
+  }
+
+  async changesSince(afterRev: number, limit: number): Promise<RegistrationDelta[]> {
+    const rows = await this.sql`
+      SELECT manifest_json, manifest_url, rev FROM nodes
+      WHERE rev > ${afterRev} ORDER BY rev ASC LIMIT ${limit}`;
     return rows.map((r) => ({
-      did: r.did as string,
-      manifest: r.manifest as string,
-      summary: `${r.capability as string} · risk:${(r.risk as string | null) ?? "low"}`,
-      ...(r.reputation ? { reputation: r.reputation as string } : {}),
+      rev: Number(r.rev),
+      manifest: r.manifest_json as Manifest,
+      manifestUrl: r.manifest_url as string,
     }));
   }
+}
+
+function toPointer(r: Row): Pointer {
+  const repCount = Number(r.rep_count ?? 0);
+  return {
+    did: r.did as string,
+    manifest: r.manifest as string,
+    summary: `${r.capability as string} · risk:${(r.risk as string | null) ?? "low"}`,
+    price: Number(r.price ?? 0),
+    ...(r.reputation ? { reputation: r.reputation as string } : {}),
+    ...(r.region ? { region: r.region as string } : {}),
+    ...(repCount > 0
+      ? {
+          rep: {
+            count: repCount,
+            distinctIssuers: Number(r.rep_issuers ?? 0),
+            totalSettledValue: Number(r.rep_settled ?? 0),
+          },
+        }
+      : {}),
+  };
 }
 
 class PgNonceStore implements NonceStore {

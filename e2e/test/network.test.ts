@@ -74,7 +74,7 @@ test("registry federation: register at one, discover at the peer", async () => {
     });
 
     // discover at B (it learned via gossip)
-    const fromB = await resolve(regB.url, "math.add", generateIdentity());
+    const fromB = (await resolve(regB.url, "math.add", generateIdentity())).results;
     assert.equal(fromB.length, 1);
     assert.equal(fromB[0]?.did, node.manifest.identity);
   } finally {

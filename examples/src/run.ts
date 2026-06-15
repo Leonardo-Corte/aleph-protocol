@@ -45,7 +45,7 @@ await fetch(registry.url + "/register", {
 // === the five verbs ===
 
 // 1. FIND
-const results = await resolve(registry.url, "math.add", agent);
+const { results } = await resolve(registry.url, "math.add", agent);
 console.log(
   `1. RESOLVE  → found ${results.length} node(s) for "math.add": ${results.map((r) => short(r.did)).join(", ")}`,
 );

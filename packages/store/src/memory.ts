@@ -12,32 +12,93 @@ import type {
   Pointer,
   AttestationPage,
   ReputationSummary,
+  RepHint,
+  ResolveFilter,
+  ResolvePage,
+  RegistrationDelta,
 } from "./interfaces";
-import { REPUTATION_PAGE_SIZE } from "./interfaces";
+import { REPUTATION_PAGE_SIZE, RESOLVE_PAGE_SIZE } from "./interfaces";
+import { capPrice, manifestRegion } from "./registry-util";
+
+interface NodeRec {
+  did: string;
+  manifestUrl: string;
+  manifest: Manifest;
+  reputation?: string;
+  region?: string;
+  rep?: RepHint;
+  rev: number;
+  caps: Map<string, { risk: string; price: number }>;
+}
 
 export class InMemoryRegistryStore implements RegistryStore {
-  private byCapability = new Map<string, Pointer[]>();
+  private nodes = new Map<string, NodeRec>();
+  private revCounter = 0;
 
-  upsertNode(manifest: Manifest, manifestUrl: string): Promise<boolean> {
-    let firstSeen = false;
+  upsertNode(manifest: Manifest, manifestUrl: string, rep?: RepHint): Promise<boolean> {
+    const firstSeen = !this.nodes.has(manifest.identity);
+    const caps = new Map<string, { risk: string; price: number }>();
     for (const cap of manifest.capabilities) {
-      const list = this.byCapability.get(cap.key) ?? [];
-      if (!list.some((p) => p.did === manifest.identity)) {
-        list.unshift({
-          did: manifest.identity,
-          manifest: manifestUrl,
-          summary: `${cap.key} · risk:${cap.risk ?? "low"}`,
-          reputation: manifest.reputation,
-        });
-        firstSeen = true;
-      }
-      this.byCapability.set(cap.key, list);
+      caps.set(cap.key, { risk: cap.risk ?? "low", price: capPrice(cap) });
     }
+    this.nodes.set(manifest.identity, {
+      did: manifest.identity,
+      manifestUrl,
+      manifest,
+      reputation: manifest.reputation,
+      region: manifestRegion(manifest),
+      // keep a prior hint if this upsert didn't carry a fresh one
+      rep: rep ?? this.nodes.get(manifest.identity)?.rep,
+      rev: ++this.revCounter, // every upsert advances the feed (updates propagate too)
+      caps,
+    });
     return Promise.resolve(firstSeen);
   }
 
-  resolveByCapability(capability: string, limit: number): Promise<Pointer[]> {
-    return Promise.resolve((this.byCapability.get(capability) ?? []).slice(0, limit));
+  resolveByCapability(capability: string, filter: ResolveFilter = {}): Promise<ResolvePage> {
+    const limit = filter.limit ?? RESOLVE_PAGE_SIZE;
+    const before = filter.cursor ? Number(filter.cursor) : Infinity; // keyset on rev DESC
+    const matches = [...this.nodes.values()]
+      .filter((n) => n.caps.has(capability) && n.rev < before)
+      .filter((n) => {
+        const cap = n.caps.get(capability)!;
+        if (filter.maxPrice !== undefined && cap.price > filter.maxPrice) return false;
+        if (filter.region !== undefined && n.region !== filter.region) return false;
+        if (filter.minIssuers !== undefined && (n.rep?.distinctIssuers ?? 0) < filter.minIssuers)
+          return false;
+        if (filter.minSettled !== undefined && (n.rep?.totalSettledValue ?? 0) < filter.minSettled)
+          return false;
+        return true;
+      })
+      .sort((a, b) => b.rev - a.rev); // newest-first
+    const page = matches.slice(0, limit);
+    const last = page[page.length - 1];
+    return Promise.resolve({
+      results: page.map((n) => this.toPointer(n, capability)),
+      nextCursor: matches.length > limit && last ? String(last.rev) : undefined,
+    });
+  }
+
+  changesSince(afterRev: number, limit: number): Promise<RegistrationDelta[]> {
+    const deltas = [...this.nodes.values()]
+      .filter((n) => n.rev > afterRev)
+      .sort((a, b) => a.rev - b.rev)
+      .slice(0, limit)
+      .map((n) => ({ rev: n.rev, manifest: n.manifest, manifestUrl: n.manifestUrl }));
+    return Promise.resolve(deltas);
+  }
+
+  private toPointer(n: NodeRec, capability: string): Pointer {
+    const cap = n.caps.get(capability)!;
+    return {
+      did: n.did,
+      manifest: n.manifestUrl,
+      summary: `${capability} · risk:${cap.risk}`,
+      price: cap.price,
+      ...(n.reputation ? { reputation: n.reputation } : {}),
+      ...(n.region ? { region: n.region } : {}),
+      ...(n.rep ? { rep: n.rep } : {}),
+    };
   }
 }
 

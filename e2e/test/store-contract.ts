@@ -7,14 +7,26 @@ import { test } from "node:test";
 import { generateIdentity, SettlementRail, createAttestation, type Manifest } from "@aleph/core";
 import type { Stores } from "@aleph/store";
 
-function manifestFor(did: string, caps: string[], reputation?: string): Manifest {
+function manifestFor(
+  did: string,
+  caps: string[],
+  reputation?: string,
+  opts: { price?: number; region?: string } = {},
+): Manifest {
   return {
     v: "aleph/0.1",
     identity: did,
     conformance: "L1",
-    capabilities: caps.map((key) => ({ key, risk: "low" as const })),
+    capabilities: caps.map((key) => ({
+      key,
+      risk: "low" as const,
+      ...(opts.price !== undefined
+        ? { cost: { unit: "stable", value: String(opts.price), model: "per-call" } }
+        : {}),
+    })),
     endpoint: [`http://127.0.0.1/aleph`],
     ...(reputation ? { reputation } : {}),
+    ...(opts.region ? { ext: { region: opts.region } } : {}),
   };
 }
 
@@ -40,12 +52,106 @@ export function runStoreContract(name: string, make: () => Promise<Stores>): voi
       const m = manifestFor(node.did, ["math.add"], "http://127.0.0.1/reputation");
       assert.equal(await s.registry.upsertNode(m, "http://n/manifest"), true); // first-seen
       assert.equal(await s.registry.upsertNode(m, "http://n/manifest"), false); // again → not new
-      const found = await s.registry.resolveByCapability("math.add", 10);
+      const found = (await s.registry.resolveByCapability("math.add", { limit: 10 })).results;
       assert.equal(found.length, 1);
       assert.equal(found[0]?.did, node.did);
       assert.equal(found[0]?.reputation, "http://127.0.0.1/reputation");
       assert.match(found[0]?.summary ?? "", /math\.add/);
-      assert.equal((await s.registry.resolveByCapability("nope.none", 10)).length, 0);
+      assert.equal((await s.registry.resolveByCapability("nope.none", { limit: 10 })).results.length, 0);
+    } finally {
+      await s.close();
+    }
+  });
+
+  test(`[${name}] registry: filtering (price/region/reputation) + keyset pagination`, async () => {
+    const s = await make();
+    try {
+      // three providers of "img.gen": cheap/EU/high-rep, dear/US/low-rep, mid/EU.
+      const a = generateIdentity();
+      const b = generateIdentity();
+      const c = generateIdentity();
+      await s.registry.upsertNode(
+        manifestFor(a.did, ["img.gen"], undefined, { price: 1, region: "eu" }),
+        "http://a",
+        {
+          count: 20,
+          distinctIssuers: 15,
+          totalSettledValue: 500,
+        },
+      );
+      await s.registry.upsertNode(
+        manifestFor(b.did, ["img.gen"], undefined, { price: 9, region: "us" }),
+        "http://b",
+        {
+          count: 1,
+          distinctIssuers: 1,
+          totalSettledValue: 3,
+        },
+      );
+      await s.registry.upsertNode(
+        manifestFor(c.did, ["img.gen"], undefined, { price: 5, region: "eu" }),
+        "http://c",
+      );
+
+      // price ceiling
+      const cheap = (await s.registry.resolveByCapability("img.gen", { maxPrice: 5 })).results;
+      assert.deepEqual(new Set(cheap.map((p) => p.did)), new Set([a.did, c.did]));
+      assert.ok(cheap.every((p) => (p.price ?? 0) <= 5));
+
+      // region
+      const eu = (await s.registry.resolveByCapability("img.gen", { region: "eu" })).results;
+      assert.deepEqual(new Set(eu.map((p) => p.did)), new Set([a.did, c.did]));
+
+      // reputation hint (min distinct issuers) — only A qualifies, and the hint
+      // rides along on the pointer for cheap client-side ranking.
+      const trusted = (await s.registry.resolveByCapability("img.gen", { minIssuers: 10 })).results;
+      assert.equal(trusted.length, 1);
+      assert.equal(trusted[0]?.did, a.did);
+      assert.equal(trusted[0]?.rep?.distinctIssuers, 15);
+
+      // keyset pagination: page size 2 → 2 then 1, all three seen, no dupes.
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      let pages = 0;
+      do {
+        const page = await s.registry.resolveByCapability("img.gen", { limit: 2, cursor });
+        pages++;
+        for (const p of page.results) seen.add(p.did);
+        cursor = page.nextCursor;
+      } while (cursor);
+      assert.equal(seen.size, 3);
+      assert.equal(pages, 2);
+    } finally {
+      await s.close();
+    }
+  });
+
+  test(`[${name}] registry: anti-entropy feed (changesSince)`, async () => {
+    const s = await make();
+    try {
+      const a = generateIdentity();
+      const b = generateIdentity();
+      await s.registry.upsertNode(manifestFor(a.did, ["x.do"]), "http://a");
+      await s.registry.upsertNode(manifestFor(b.did, ["y.do"]), "http://b");
+
+      // everything since the beginning, oldest-first, monotonic revs
+      const all = await s.registry.changesSince(0, 100);
+      assert.equal(all.length, 2);
+      const [first, second] = all;
+      assert.ok(first && second);
+      assert.ok(first.rev < second.rev);
+      assert.equal(first.manifest.identity, a.did);
+
+      // a peer that already has rev[0] pulls only the delta after it
+      const delta = await s.registry.changesSince(first.rev, 100);
+      assert.equal(delta.length, 1);
+      assert.equal(delta[0]?.manifest.identity, b.did);
+
+      // an update re-emits the node on the feed (updates propagate, not just inserts)
+      await s.registry.upsertNode(manifestFor(a.did, ["x.do", "x.do2"]), "http://a");
+      const afterUpdate = await s.registry.changesSince(second.rev, 100);
+      assert.equal(afterUpdate.length, 1);
+      assert.equal(afterUpdate[0]?.manifest.identity, a.did);
     } finally {
       await s.close();
     }
@@ -112,7 +218,11 @@ export function runStoreContract(name: string, make: () => Promise<Stores>): voi
         Array.from({ length: 20 }, () => s.registry.upsertNode(m, "http://n/manifest")),
       );
       assert.equal(upserts.filter((x) => x).length, 1, "exactly one upsert is first-seen under concurrency");
-      assert.equal((await s.registry.resolveByCapability("math.add", 50)).length, 1, "no duplicate rows");
+      assert.equal(
+        (await s.registry.resolveByCapability("math.add", { limit: 50 })).results.length,
+        1,
+        "no duplicate rows",
+      );
 
       // 20 parallel attestations backed by the SAME settlement → exactly one stored.
       const { att, payee } = settledAttestation(3);

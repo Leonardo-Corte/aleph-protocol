@@ -6,22 +6,63 @@
 
 import type { Manifest, Attestation, SettlementRecord } from "@aleph/core";
 
+// A reputation snapshot the registry keeps as a COARSE discovery hint. It is
+// not authoritative (the agent still computes trust from the raw attestations);
+// it just lets the registry pre-filter and the agent rank without N round-trips.
+export interface RepHint {
+  count: number;
+  distinctIssuers: number;
+  totalSettledValue: number;
+}
+
 // A discovery pointer returned by RESOLVE — never a full manifest (two-stage).
 export interface Pointer {
   did: string;
   manifest: string;
   summary: string;
   reputation?: string;
+  price?: number; // price of the MATCHED capability (numeric, from cost.value)
+  region?: string; // node region (manifest.ext.region), if declared
+  rep?: RepHint; // reputation hint snapshot, if known
+}
+
+// Selectivity pushed to the registry so the agent pulls fewer candidates.
+export interface ResolveFilter {
+  limit?: number;
+  cursor?: string; // opaque keyset cursor (newest-first)
+  maxPrice?: number; // exclude capabilities priced above this
+  region?: string; // require this node region
+  minIssuers?: number; // require ≥ this many distinct reputation issuers (hint)
+  minSettled?: number; // require ≥ this much total settled value (hint)
+}
+
+export interface ResolvePage {
+  results: Pointer[];
+  nextCursor?: string;
+}
+
+// A registration as replayed over the anti-entropy feed (see changesSince).
+export interface RegistrationDelta {
+  rev: number; // monotonic revision assigned on each upsert
+  manifest: Manifest;
+  manifestUrl: string;
 }
 
 // --- Discovery (the registry) ---
 export interface RegistryStore {
-  // Index a node's manifest. Returns true if this is a first-seen node
-  // (so the registry knows whether to gossip it onward).
-  upsertNode(manifest: Manifest, manifestUrl: string): Promise<boolean>;
-  // Find providers of a capability, newest-first, capped at `limit`.
-  resolveByCapability(capability: string, limit: number): Promise<Pointer[]>;
+  // Index a node's manifest. Returns true if this is a first-seen node (so the
+  // registry knows whether to gossip it onward). An optional reputation snapshot
+  // is stored as a coarse discovery hint.
+  upsertNode(manifest: Manifest, manifestUrl: string, rep?: RepHint): Promise<boolean>;
+  // Find providers of a capability with optional filtering + keyset pagination.
+  resolveByCapability(capability: string, filter?: ResolveFilter): Promise<ResolvePage>;
+  // Anti-entropy: registrations with rev greater than `afterRev`, oldest-first,
+  // so an offline peer can catch up by pulling deltas.
+  changesSince(afterRev: number, limit: number): Promise<RegistrationDelta[]>;
 }
+
+// Default discovery page size (cap so one RESOLVE can't return an unbounded set).
+export const RESOLVE_PAGE_SIZE = 50;
 
 // --- Replay protection (nonces) ---
 // Named NonceChecker to match the core interface that verifyReceived consumes.
