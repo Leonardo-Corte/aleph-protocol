@@ -80,7 +80,8 @@ packages/                      # pnpm workspace, @aleph/* packages
                default, decay, revocation, computeTrustAsync) + chain, grant
                (sub-delegation chain), complexity caps, errors, hash, base58.
   transport/   @aleph/transport — node:http helpers (readJson 1MB cap, sendJson,
-               asyncHandler, RateLimiter, clientIp, hardenServer). PRIVATE.
+               asyncHandler, RateLimiter, clientIp, hardenServer) + observability
+               (structured Logger w/ redaction, MetricsRegistry, trace helpers). PRIVATE.
   node/        @aleph/node      — capability provider runtime. Signs its Manifest;
                verifies grant-chain+schema+escrow; rate limit + complexity caps +
                server hardening; pluggable stores.
@@ -115,6 +116,8 @@ spec/
                                   revocation, on-chain verification, pagination)
   REGISTRY.md                   — discovery/federation + run-your-own-registry guide
   THREAT-MODEL.md               — adversaries → mitigation, each linked to code + test
+  OBSERVABILITY.md              — golden signals, metrics, SLOs, logging/tracing
+deploy/observability/          — Prometheus alerts.yml + Grafana dashboard.json
 conformance/python/            — independent Python impl (proves cross-language)
 .github/workflows/ci.yml       — 6 jobs (see §5)
 ```
@@ -147,7 +150,7 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **86 tests (85 pass, 1 skipped = postgres without DATABASE_URL)**,
+Current state: **92 tests (91 pass, 1 skipped = postgres without DATABASE_URL)**,
 all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
 (functions lowered because the Postgres/EVM drivers are CI-only).
 
@@ -208,7 +211,9 @@ reconcile, lazy manifest re-verification + DID pinning, ETag/cache + p99 load
 test — DECISIONS D9, spec/REGISTRY.md). Closes Milestone M2. · **S7 (security:
 threat model with tested mitigations, grant sub-delegation chain, per-IP/per-DID
 rate limiting + complexity caps + server hardening, agent-side safety — DECISIONS
-D10, spec/THREAT-MODEL.md).**
+D10, spec/THREAT-MODEL.md). · **S8 (observability: dependency-free structured
+logging w/ secret redaction + trace correlation, Prometheus /metrics, SLOs +
+alerts + Grafana dashboard — DECISIONS D11, spec/OBSERVABILITY.md).**
 
 **Deferred (tracked):** `did:pkh` (eip155 recovery) → chain tooling, and it now
 also gates binding on-chain settlement *addresses* to attesting *DIDs* (S5.3);
@@ -216,9 +221,11 @@ public-testnet deploy of AlephEscrow → owner's manual step (verified on anvil)
 **staking/slashing** for reputation → a planned AIP (D8); **external core +
 contract audit + bug bounty** → owner's manual gate to MAINNET (D10, ROADMAP §7.5).
 
-**NEXT — Section 8: Observability (structured logging, metrics, tracing,
-alerting).** Then S9 (deployment: containers, TLS, secrets, run-your-own guide).
-M3 in progress (S7 done; S8 observability / S9 deploy remain).
+**NEXT — Section 9: Deployment & infrastructure (containers, TLS, domains,
+secrets, release/rollback, run-your-own guide).** Per ROADMAP §9: Dockerfiles per
+deployable (registry-server, demo-node), hosting + TLS, managed secrets/config,
+automated deploy + rollback, and the "run your own node/registry" guide. Closes
+Milestone M3 (S7 + S8 done; S9 deploy remains).
 
 ---
 

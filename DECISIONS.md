@@ -292,6 +292,34 @@ compounding silently.
 
 ---
 
+## D11 — Observability: in-house structured logs + Prometheus metrics + trace correlation; swappable for pino/OTel/prom-client
+
+**Decision.**
+
+- **Dependency-free primitives in `@aleph/transport`:** a structured JSON
+  `Logger` (levels, child bindings, **secret redaction by key name** — signatures
+  stay public), a Prometheus-text `MetricsRegistry` (counters + histograms), and
+  trace-id helpers. Wired into the node and registry: per-request trace-correlated
+  logging, `GET /metrics`, and instrumentation of traffic/latency/errors-by-code
+  /INVOKE outcomes/settlements/registrations (the four golden signals + the
+  settlement & Sybil-flood counters that matter for this protocol).
+- **Trace correlation:** the agent stamps `x-aleph-trace`; one operation is
+  followable agent → registry → node across structured logs.
+- **Default silent** (tests stay quiet); production sets `ALEPH_LOG_LEVEL` or
+  injects a logger/registry. The interfaces **mirror pino / prom-client / OTel**
+  so production swaps those in behind the same call sites — no rewrite.
+- **SLOs + alerts + dashboard shipped:** `spec/OBSERVABILITY.md` (golden signals,
+  SLOs), `deploy/observability/alerts.yml` (error spike, settlement failures,
+  registration flood, RESOLVE-p99 SLO burn), `deploy/observability/dashboard.json`.
+
+**Why.** A network you cannot observe is one you cannot operate or trust — and
+observability is how you *prove* health to the people you ask to build on it.
+Keeping the primitives in-house and dependency-free preserves the build's
+hermetic, minimal-dependency discipline while leaving a clean seam to adopt the
+heavyweight production exporters when deploying.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
@@ -310,3 +338,6 @@ compounding silently.
   sub-delegation, rate limiting + complexity caps + server hardening, agent-side
   safety; external audit + bug bounty gate mainnet as owner's manual step;
   ROADMAP §7).
+- 2026-06-15 — D11 decided (observability: in-house structured logs + Prometheus
+  metrics + trace correlation, swappable for pino/OTel/prom-client; SLOs + alerts
+  + dashboard; ROADMAP §8).

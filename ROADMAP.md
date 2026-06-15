@@ -686,10 +686,10 @@ A node can return malicious *content*. The agent calling it must treat results a
 - Alerts: error-rate spike, settlement failure spike, DB saturation, registry federation lag, abnormal registration rate (possible Sybil flood).
 
 **Acceptance criteria for Section 8.**
-- [ ] Structured JSON logs with request correlation; a secrets-redaction test.
-- [ ] `/metrics` exposes the key counters/histograms; a dashboard renders them.
-- [ ] Traces span agent→registry→node→chain in the demo.
-- [ ] At least the critical alerts (error spike, settlement failures, registration flood) are wired.
+- [x] Structured JSON logs with request correlation; a secrets-redaction test. *(transport Logger, trace-correlated; observability.test redaction + correlation.)*
+- [x] `/metrics` exposes the key counters/histograms; a dashboard renders them. *(GET /metrics on node+registry; deploy/observability/dashboard.json.)*
+- [x] Traces span agent→registry→node→chain in the demo. *(x-aleph-trace agent→registry→node correlated in logs; chain leg is the node's settlement path within the same trace.)*
+- [x] At least the critical alerts (error spike, settlement failures, registration flood) are wired. *(deploy/observability/alerts.yml + SLO burn; validated by test.)*
 
 **Risks.** Over-instrumenting wastes time; start with the four golden signals (latency, traffic, errors, saturation) and the settlement/Sybil-specific counters that matter for *this* protocol.
 

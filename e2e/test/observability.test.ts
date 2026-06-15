@@ -3,7 +3,9 @@
 // or node is operable and provably healthy.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { resolve, invoke } from "@aleph/client";
 import { generateIdentity } from "@aleph/core";
 import { createNode } from "@aleph/node";
@@ -156,4 +158,28 @@ test("tracing: the same trace id flows agent → registry → node logs", async 
     await node.close();
     await registry.close();
   }
+});
+
+test("alerting & dashboard artifacts are present and well-formed", () => {
+  const root = fileURLToPath(new URL("../../deploy/observability/", import.meta.url));
+
+  // the three critical alerts are wired (error spike, settlement failures, flood)
+  const alerts = readFileSync(root + "alerts.yml", "utf8");
+  for (const name of ["AlephErrorSpike", "AlephSettlementFailures", "AlephRegistrationFlood"]) {
+    assert.match(alerts, new RegExp(`alert:\\s*${name}`), `missing alert ${name}`);
+  }
+  // alert expressions reference real exported metrics
+  assert.match(alerts, /aleph_errors_total/);
+  assert.match(alerts, /aleph_settlements_total/);
+  assert.match(alerts, /aleph_registrations_total/);
+
+  // the dashboard parses and binds panels to the metrics
+  const dash = JSON.parse(readFileSync(root + "dashboard.json", "utf8")) as {
+    panels: { targets: { expr: string }[] }[];
+  };
+  assert.ok(dash.panels.length >= 4, "dashboard should render the golden signals");
+  const exprs = dash.panels.flatMap((p) => p.targets.map((t) => t.expr)).join(" ");
+  assert.match(exprs, /aleph_requests_total/);
+  assert.match(exprs, /aleph_request_ms_bucket/);
+  assert.match(exprs, /aleph_settlements_total/);
 });

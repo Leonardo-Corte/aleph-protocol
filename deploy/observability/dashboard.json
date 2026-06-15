@@ -1,0 +1,76 @@
+{
+  "title": "Aleph — golden signals + settlement",
+  "uid": "aleph-overview",
+  "schemaVersion": 39,
+  "tags": ["aleph"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Traffic — requests/s by service",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(aleph_requests_total[1m])) by (service)", "legendFormat": "{{service}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Latency — RESOLVE p99 (ms)",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(aleph_request_ms_bucket{service=\"registry\"}[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ],
+      "thresholds": { "steps": [{ "value": 50, "color": "red" }] }
+    },
+    {
+      "id": 3,
+      "title": "Errors — by code",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [{ "expr": "sum(rate(aleph_errors_total[5m])) by (code)", "legendFormat": "{{code}}" }]
+    },
+    {
+      "id": 4,
+      "title": "INVOKE outcomes",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [{ "expr": "sum(rate(aleph_invoke_total[5m])) by (outcome)", "legendFormat": "{{outcome}}" }]
+    },
+    {
+      "id": 5,
+      "title": "Settlements — released vs refunded",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "sum(rate(aleph_settlements_total[5m])) by (status)", "legendFormat": "{{status}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Registrations/s (Sybil-flood signal)",
+      "type": "timeseries",
+      "datasource": "${datasource}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [{ "expr": "sum(rate(aleph_registrations_total[1m]))", "legendFormat": "registrations" }]
+    }
+  ]
+}

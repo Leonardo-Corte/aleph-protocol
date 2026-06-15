@@ -1,0 +1,47 @@
+# Prometheus alerting rules for Aleph (registry + node).
+# Load via prometheus.yml `rule_files:`. Thresholds are starting points — tune
+# to your traffic. See spec/OBSERVABILITY.md.
+groups:
+  - name: aleph.critical
+    rules:
+      # Error-rate spike: sustained errors across services.
+      - alert: AlephErrorSpike
+        expr: sum(rate(aleph_errors_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Aleph error rate elevated"
+          description: "aleph_errors_total is rising over 5m — check error codes and recent deploys."
+
+      # Settlement failures: refunds/failed deliveries spiking (money path).
+      - alert: AlephSettlementFailures
+        expr: sum(rate(aleph_settlements_total{status="refunded"}[10m])) > 0.2
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Aleph settlement failures elevated"
+          description: "Refund rate is high — nodes failing to deliver, or a payment-path regression."
+
+      # Registration flood: abnormal new-node rate (possible Sybil flood).
+      - alert: AlephRegistrationFlood
+        expr: sum(rate(aleph_registrations_total[1m])) > 5
+        for: 2m
+        labels:
+          severity: warn
+        annotations:
+          summary: "Abnormal registration rate at the registry"
+          description: "Registrations are spiking — possible Sybil flood; inspect sources and rate limits."
+
+  - name: aleph.slo
+    rules:
+      # SLO burn: RESOLVE p99 latency above the 50ms target.
+      - alert: AlephResolveLatencySLO
+        expr: histogram_quantile(0.99, sum(rate(aleph_request_ms_bucket{service="registry"}[5m])) by (le)) > 50
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "RESOLVE p99 latency over SLO (50ms)"
+          description: "Registry discovery is slow — check DB latency, cache hit rate, and load."
