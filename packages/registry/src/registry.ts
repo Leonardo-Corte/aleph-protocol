@@ -17,7 +17,15 @@ import {
   type ResolvePage,
   type RegistrationDelta,
 } from "@aleph/store";
-import { readJson, sendJson, asyncHandler } from "@aleph/transport";
+import {
+  readJson,
+  sendJson,
+  asyncHandler,
+  RateLimiter,
+  clientIp,
+  hardenServer,
+  type RateLimitOptions,
+} from "@aleph/transport";
 
 // Best-effort fetch of a node's reputation summary, kept as a COARSE discovery
 // hint (the agent still computes real trust). Any failure → no hint; discovery
@@ -58,12 +66,15 @@ export function createRegistry(opts: {
   reconcileIntervalMs?: number;
   // Short-TTL read cache for hot capability resolves (ms). 0 disables it.
   resolveCacheTtlMs?: number;
+  // Token-bucket rate limit per IP and per caller DID. Generous default.
+  rateLimit?: RateLimitOptions;
 }) {
   const store: RegistryStore = opts.store ?? new InMemoryRegistryStore();
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
   const peers = opts.peers ?? [];
   const fetchSummary = opts.fetchSummary ?? defaultFetchSummary;
   const cacheTtl = opts.resolveCacheTtlMs ?? 1000;
+  const limiter = new RateLimiter(opts.rateLimit ?? { capacity: 5000, refillPerSec: 500 });
 
   // A tiny read cache for hot capabilities: discovery is read-heavy and writes
   // are comparatively rare, so cache resolves briefly and drop the whole cache
@@ -130,6 +141,11 @@ export function createRegistry(opts: {
   const server = http.createServer(
     asyncHandler(async (req, res) => {
       try {
+        // Abuse defense: per-IP token bucket in front of every endpoint.
+        if (!limiter.allow("ip:" + clientIp(req))) {
+          sendJson(res, 429, { error: err("RATE_LIMITED", "rate limit exceeded") });
+          return;
+        }
         // Anti-entropy feed: registrations since `rev`, oldest-first, so a peer
         // (even one that was offline) can catch up by pulling deltas.
         if (req.method === "GET" && req.url?.startsWith("/since")) {
@@ -176,6 +192,11 @@ export function createRegistry(opts: {
             sendJson(res, 400, { error: err("WRONG_TYPE", "registry only accepts RESOLVE") });
             return;
           }
+          // per-DID rate limit (an authenticated flood from one caller)
+          if (!limiter.allow("did:" + env.from)) {
+            sendJson(res, 429, { error: err("RATE_LIMITED", "rate limit exceeded") });
+            return;
+          }
           const capability = env.body.capability as string;
           // Optional selectivity pushed to the registry (pull-not-push): the
           // agent pulls fewer candidates by filtering + paginating server-side.
@@ -191,6 +212,8 @@ export function createRegistry(opts: {
       }
     }),
   );
+
+  hardenServer(server);
 
   return {
     url: `http://127.0.0.1:${opts.port}`,

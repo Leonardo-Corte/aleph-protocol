@@ -8,6 +8,7 @@ export * from "./grant";
 export * from "./manifest";
 export * from "./replay";
 export * from "./schema";
+export * from "./complexity";
 export * from "./canonical";
 export * from "./signing";
 export * from "./keystore";

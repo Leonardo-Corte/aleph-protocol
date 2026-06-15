@@ -71,6 +71,9 @@ importers:
       '@aleph/store':
         specifier: workspace:*
         version: link:../packages/store
+      '@aleph/transport':
+        specifier: workspace:*
+        version: link:../packages/transport
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.3)

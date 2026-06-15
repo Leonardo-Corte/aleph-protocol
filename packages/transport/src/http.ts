@@ -55,3 +55,49 @@ export function asyncHandler(
     });
   };
 }
+
+export interface RateLimitOptions {
+  capacity: number; // max burst (tokens available at rest)
+  refillPerSec: number; // sustained rate (tokens added per second)
+}
+
+// A lazy token-bucket rate limiter: O(1) per check, no background timer. Each
+// key (per-IP or per-DID) gets `capacity` burst and refills at `refillPerSec`.
+// The basic abuse defense in front of public endpoints — a flood from one
+// caller is throttled without affecting others.
+export class RateLimiter {
+  private buckets = new Map<string, { tokens: number; last: number }>();
+  constructor(private opts: RateLimitOptions) {}
+
+  // Consume one token for `key`; false if the bucket is empty (→ 429).
+  allow(key: string): boolean {
+    const now = Date.now();
+    const b = this.buckets.get(key) ?? { tokens: this.opts.capacity, last: now };
+    b.tokens = Math.min(this.opts.capacity, b.tokens + ((now - b.last) / 1000) * this.opts.refillPerSec);
+    b.last = now;
+    this.buckets.set(key, b);
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
+  }
+}
+
+// Best-effort client IP for per-IP limiting (loopback/proxy aware enough for
+// the basic defense; a production deployment terminates TLS/proxy upstream).
+export function clientIp(req: IncomingMessage): string {
+  const fwd = req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.length > 0) return fwd.split(",")[0]!.trim();
+  return req.socket.remoteAddress ?? "unknown";
+}
+
+// HTTP server hardening: bound how long a client may take to send headers and
+// the whole request (slow-loris defense), and cap concurrent connections. Tunable
+// but with safe defaults so every server is protected by construction.
+export function hardenServer(
+  server: { headersTimeout: number; requestTimeout: number; maxConnections: number },
+  opts: { headersTimeoutMs?: number; requestTimeoutMs?: number; maxConnections?: number } = {},
+): void {
+  server.headersTimeout = opts.headersTimeoutMs ?? 10_000;
+  server.requestTimeout = opts.requestTimeoutMs ?? 30_000;
+  server.maxConnections = opts.maxConnections ?? 1024;
+}

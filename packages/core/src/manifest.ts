@@ -7,6 +7,9 @@
 import { type Identity } from "./identity";
 import { DOMAIN, signEd25519, verifyByDid } from "./signing";
 
+// Complexity cap: a Manifest is a self-declaration, not a catalogue dump.
+export const MAX_CAPABILITIES_PER_MANIFEST = 256;
+
 export interface Capability {
   key: string;
   schema?: { input?: unknown; output?: unknown };
@@ -58,6 +61,11 @@ export function validateManifest(m: unknown): { ok: boolean; reason?: string } {
   }
   if (!Array.isArray(man.capabilities) || man.capabilities.length === 0) {
     return { ok: false, reason: "need at least one capability" };
+  }
+  // Complexity cap: a Manifest advertising thousands of capabilities is either
+  // abuse or a bug; bound it so indexing/serialization stays cheap.
+  if (man.capabilities.length > MAX_CAPABILITIES_PER_MANIFEST) {
+    return { ok: false, reason: "too many capabilities" };
   }
   for (const c of man.capabilities) {
     if (!c || typeof c.key !== "string") return { ok: false, reason: "capability missing key" };

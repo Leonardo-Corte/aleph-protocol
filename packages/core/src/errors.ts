@@ -15,6 +15,8 @@ export type AlephErrorCode =
   | "INSUFFICIENT_FUNDS" // escrow could not be locked
   | "SETTLE_INVALID" // settlement reference invalid
   | "ATTEST_INVALID" // attestation not backed by a settlement
+  | "RATE_LIMITED" // too many requests from this caller/IP (abuse defense)
+  | "TOO_COMPLEX" // payload exceeds array/nesting/count limits
   | "INTERNAL"; // unexpected server error
 
 export interface AlephError {

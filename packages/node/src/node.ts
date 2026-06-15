@@ -14,6 +14,7 @@ import { NonceStore, verifyReceived } from "@aleph/core";
 import { verifyGrant, type Grant } from "@aleph/core";
 import { hashObject } from "@aleph/core";
 import { validateSchema, type JsonSchema } from "@aleph/core";
+import { checkComplexity } from "@aleph/core";
 import { signManifest } from "@aleph/core";
 import { err, type AlephError } from "@aleph/core";
 import { verifyAttestation, type Attestation } from "@aleph/core";
@@ -23,7 +24,15 @@ import {
   type ReputationStore,
   type SettlementStore,
 } from "@aleph/store";
-import { readJson, sendJson, asyncHandler } from "@aleph/transport";
+import {
+  readJson,
+  sendJson,
+  asyncHandler,
+  RateLimiter,
+  clientIp,
+  hardenServer,
+  type RateLimitOptions,
+} from "@aleph/transport";
 
 interface CapabilitySpec {
   handler: (input: Record<string, unknown>) => { output: Record<string, unknown> };
@@ -43,12 +52,16 @@ export interface NodeOptions {
   reputationStore?: ReputationStore;
   nonceStore?: NonceChecker;
   settlementStore?: SettlementStore;
+  // Token-bucket rate limit per IP and per caller DID. Generous default; tune
+  // down (or up) per deployment. The basic flood/DoS defense.
+  rateLimit?: RateLimitOptions;
 }
 
 export function createNode(opts: NodeOptions) {
   const { identity, port } = opts;
   const baseUrl = `http://127.0.0.1:${port}`;
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
+  const limiter = new RateLimiter(opts.rateLimit ?? { capacity: 2000, refillPerSec: 200 });
 
   // The node's reputation store holds the verified attestations written about
   // it. Trust is computed by the consumer from these raw facts — the node only
@@ -112,6 +125,11 @@ export function createNode(opts: NodeOptions) {
   const server = http.createServer(
     asyncHandler(async (req, res) => {
       try {
+        // Abuse defense: per-IP token bucket in front of every endpoint.
+        if (!limiter.allow("ip:" + clientIp(req))) {
+          sendJson(res, 429, { error: err("RATE_LIMITED", "rate limit exceeded") });
+          return;
+        }
         if (req.method === "GET" && req.url === "/manifest") {
           // The Manifest is signed once at startup; its signature uniquely
           // identifies its content, so it makes a stable ETag. A re-fetch with a
@@ -207,6 +225,17 @@ export function createNode(opts: NodeOptions) {
             sendJson(res, 400, { error: err("WRONG_TYPE", "node only accepts INVOKE") });
             return;
           }
+          // per-DID rate limit (an authenticated flood from one caller)
+          if (!limiter.allow("did:" + env.from)) {
+            reject(res, env, err("RATE_LIMITED", "rate limit exceeded"));
+            return;
+          }
+          // structural complexity cap (deep/wide payloads rejected before work)
+          const cx = checkComplexity(env.body);
+          if (!cx.ok) {
+            reject(res, env, err("TOO_COMPLEX", cx.reason ?? "payload too complex"));
+            return;
+          }
 
           // 2. capability exists
           const capName = env.body.capability as string;
@@ -295,6 +324,8 @@ export function createNode(opts: NodeOptions) {
       }
     }),
   );
+
+  hardenServer(server);
 
   return {
     manifest,
