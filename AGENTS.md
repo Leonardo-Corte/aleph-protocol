@@ -76,7 +76,9 @@ packages/                      # pnpm workspace, @aleph/* packages
                replay/NonceChecker, schema, canonical (RFC 8785), signing
                (domain separation, verifyByDid), keystore (scrypt+AES-GCM),
                keyring (rotation), resolver, vocabulary, settle/rail (in-memory
-               reference), trust/attest + chain, errors, hash, base58.
+               reference), trust/attest (pluggable TrustPolicy, diversity-weighted
+               default, decay, revocation, computeTrustAsync) + chain, errors,
+               hash, base58.
   transport/   @aleph/transport — node:http helpers (readJson, sendJson,
                asyncHandler, 1MB cap). PRIVATE.
   node/        @aleph/node      — capability provider runtime. Signs its Manifest;
@@ -84,12 +86,15 @@ packages/                      # pnpm workspace, @aleph/* packages
   registry/    @aleph/registry  — discovery; verifies Manifest sig; RegistryStore;
                federation (gossip).
   client/      @aleph/client    — agent SDK (THE target): resolve/resolveRanked/
-               invoke/attest/fetchReputation/compose.
+               invoke/attest/fetchReputation (paginated)/fetchReputationSummary/
+               compose.
   mcp/         @aleph/mcp       — Aleph as an MCP server (aleph_resolve/aleph_invoke).
   cli/         @aleph/cli       — keygen/registry/node/resolve/invoke; EncryptedFileKeyStore.
   store/       @aleph/store     — async repos (Registry/Nonce/Reputation/Settlement)
                + drivers: in-memory, SQLite (node:sqlite), Postgres (postgres.js).
-  settle-evm/  @aleph/settle-evm — on-chain rail (viem) against AlephEscrow.
+               Reputation: keyset pagination + summary aggregate.
+  settle-evm/  @aleph/settle-evm — on-chain rail (viem) against AlephEscrow;
+               evmSettlementVerifier (chain-reading trust hook).
 contracts/                     # Foundry project (gitignored: lib/ out/ cache/)
   src/AlephEscrow.sol           — ERC-20 escrow (lock/release/refund), immutable.
   test/*.t.sol                  — Foundry tests incl. reentrancy.
@@ -102,6 +107,8 @@ spec/
   test-vectors/aleph/signing.json — Ed25519 signing vector
   aips/                         — AIP process (AIP-0)
   SETTLEMENT.md                 — on-chain settlement design + deploy procedure
+  REPUTATION.md                 — trust policy spec (diversity weighting, decay,
+                                  revocation, on-chain verification, pagination)
 conformance/python/            — independent Python impl (proves cross-language)
 .github/workflows/ci.yml       — 6 jobs (see §5)
 ```
@@ -134,9 +141,10 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **60 tests (59 pass, 1 skipped = postgres without DATABASE_URL)**,
-35 commits, all gates green. Coverage thresholds: lines/stmts 88, funcs 75,
-branches 68 (functions lowered because the Postgres/EVM drivers are CI-only).
+Current state: **67 tests (66 pass, 1 skipped = postgres without DATABASE_URL)**,
+all gates green (coverage stmts ~90.8 / funcs ~81.8 / branches ~78.3). Coverage
+thresholds: lines/stmts 88, funcs 75, branches 68 (functions lowered because the
+Postgres/EVM drivers are CI-only).
 
 ---
 
@@ -185,29 +193,21 @@ Six jobs, all must stay green:
 **Done:** S0 (decisions) · S1 (monorepo/CI/quality gates) · S2 (persistence:
 async stores + SQLite/Postgres + restart durability) · S3 (hardened core: RFC
 8785, domain separation, signed Manifest, Ed25519+secp256k1, did:web, key
-mgmt/rotation, cross-language proof) · **S4 (on-chain settlement: AlephEscrow +
-viem rail + anvil integration + Foundry CI)**.
+mgmt/rotation, cross-language proof) · S4 (on-chain settlement: AlephEscrow +
+viem rail + anvil integration + Foundry CI) · **S5 (reputation & anti-Sybil at
+scale: pluggable diversity-weighted TrustPolicy, decay, negative attestations +
+signed revocation, on-chain verification hook, paginated/summarised retrieval,
+wash-trading acceptance test — see DECISIONS D8, spec/REPUTATION.md)**.
 
-**Deferred (tracked):** `did:pkh` (eip155 recovery) → S4-era chain tooling;
-public-testnet deploy of AlephEscrow → owner's manual step (verified on anvil).
+**Deferred (tracked):** `did:pkh` (eip155 recovery) → chain tooling, and it now
+also gates binding on-chain settlement *addresses* to attesting *DIDs* (S5.3);
+public-testnet deploy of AlephEscrow → owner's manual step (verified on anvil);
+**staking/slashing** for reputation → a planned AIP (D8).
 
-**NEXT — Section 5: Reputation & anti-Sybil at scale.** Goal: make the
-reputation layer hold against an adversary manufacturing trust, and scale.
-Per ROADMAP §5:
-- Strengthen anti-Sybil economics: settlement-backed (done) + **diversity
-  weighting** (reputation from many distinct paying counterparties >> many from
-  one; cap per-issuer contribution, e.g. log/sqrt), and document staking as a
-  future AIP.
-- `computeTrust` becomes a **pluggable, consumer-controlled policy** with the
-  default specified; verify each attestation's settlement on-chain where applicable.
-- Reputation **storage/retrieval at scale**: pagination + ETag on `/reputation`,
-  a summary endpoint (counts, distinct issuers, total settled value).
-- **Decay** (recent > ancient), **negative attestations**, **revocation**.
-- Acceptance: a wash-trading simulation (N self-dealing identities) fails to
-  outrank an honest node with diverse real custom; trust is computed from
-  verified settlements; pagination + decay + negatives tested.
-
-Then S6 (registry at scale) closes Milestone M2; M3 = security/observability/deploy.
+**NEXT — Section 6: The registry at scale (discovery, federation, persistence,
+caching).** Per ROADMAP §6: persistent indexed discovery, robust federation
+(gossip dedupe/backoff), manifest hosting & verification, caching/perf. Closes
+Milestone M2. Then M3 = S7 security / S8 observability / S9 deploy.
 
 ---
 

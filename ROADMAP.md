@@ -544,11 +544,11 @@ The key property stays: **trust is computed by the consumer**, with a *policy th
 - **Revocation:** if an attestation was issued in error, the issuer can publish a signed revocation referencing it.
 
 **Acceptance criteria for Section 5.**
-- [ ] A wash-trading simulation (N self-dealing identities) fails to outrank an honest node with diverse real custom — proving the diversity weighting works.
-- [ ] Trust is computed from on-chain-verified settlements (a fabricated settlement reference is rejected by reading the chain).
-- [ ] `/reputation` paginates and supports conditional requests (ETag).
-- [ ] Time-decay and negative attestations are reflected in the default policy, with tests.
-- [ ] The trust policy is pluggable and documented; the default is specified.
+- [x] A wash-trading simulation (N self-dealing identities) fails to outrank an honest node with diverse real custom — proving the diversity weighting works. *(reputation-scale.test.ts: honest 10-issuer node beats a 2-issuer wash node at equal value AND at 10× volume.)*
+- [x] Trust is computed from on-chain-verified settlements (a fabricated settlement reference is rejected by reading the chain). *(computeTrustAsync + evmSettlementVerifier; anvil integration test rejects a never-locked escrow id. Address↔DID binding deferred to did:pkh.)*
+- [x] `/reputation` paginates and supports conditional requests (ETag). *(keyset pagination + ETag/304 + /reputation/summary; store contract + node HTTP tests.)*
+- [x] Time-decay and negative attestations are reflected in the default policy, with tests. *(exponential half-life; rating→0 negatives; trust + reputation-scale tests.)*
+- [x] The trust policy is pluggable and documented; the default is specified. *(TrustPolicy + DEFAULT_TRUST_POLICY; spec/REPUTATION.md, decision D8.)*
 
 **Risks.** Sybil resistance is an arms race with no perfect solution (this is honestly flagged in the spec as an open frontier). The goal is to make it *economically irrational* at the scales we expect, and to keep the policy in the consumer's hands. Don't claim it is "solved."
 

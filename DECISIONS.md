@@ -189,6 +189,44 @@ the open boundaries are documented rather than hidden.
 
 ---
 
+## D8 — Reputation: consumer-pluggable trust policy, diversity-weighted default, staking deferred
+
+**Decision.**
+
+- **Trust is computed by the consumer**, never minted by the node. `computeTrust`
+  is a **pluggable `TrustPolicy`** (issuer weight, decay, confidence scale, clock)
+  with a **specified default**; agents may override every knob. The result is an
+  **auditable `TrustScore`** exposing every input (per-issuer breakdown, weight,
+  distinct issuers) — no opaque number.
+- **Default policy.** Group attestations by issuer; apply **per-issuer
+  diminishing returns** (`log(1+value)`) so repeated business from one payer
+  saturates; **time-decay** by exponential half-life (180 d) so recent custom
+  outweighs ancient; fold an **evidence-mass confidence** `1−exp(−W/k)` (k=5) into
+  a single comparable `reputation = score × confidence`. Ranking uses
+  `reputation`, so at equal rating more **distinct, recent, settlement-backed**
+  custom wins — that is the anti-Sybil signal.
+- **Anti-Sybil posture.** The base rule (a settlement backs each attestation)
+  raises forgery cost; diversity weighting removes the wash-trade lever (faking
+  *diversity*, not just volume, is the binding cost). This is **not "solved"** —
+  Sybil resistance is an arms race; **staking/slashing** is documented as a
+  **planned AIP**, not shipped.
+- **Negative attestations** are `rating→0` (no new type); **revocation** is a
+  signed statement only the original issuer can make. **On-chain verification**
+  is a pluggable async hook (`computeTrustAsync` + `evmSettlementVerifier`) so a
+  fabricated settlement reference is rejected by reading the chain; binding an
+  on-chain address to the attesting DID awaits **did:pkh** (deferred, D3).
+- **Scale.** `/reputation` paginates (keyset) with **ETag/304**; a
+  `/reputation/summary` aggregate lets an agent rank without downloading the raw
+  set, which stays available for full verification.
+
+**Why.** Reputation is the load-bearing wall: FIND is useless without TRUST.
+Keeping the policy in the consumer's hands (with a sane, auditable default) avoids
+a central score to capture or game, while diversity weighting + decay make
+manufacturing trust economically irrational at expected scale — honestly, without
+overclaiming a solution.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
@@ -197,3 +235,6 @@ the open boundaries are documented rather than hidden.
   suites, key management; ROADMAP §3).
 - 2026-06-14 — D7 decided (on-chain settlement: escrow design, deadline-refund,
   deferred dispute/oracle; ROADMAP §4).
+- 2026-06-15 — D8 decided (reputation: pluggable trust policy, diversity-weighted
+  default, decay/revocation/negatives, on-chain verification hook, pagination;
+  staking deferred to a planned AIP; ROADMAP §5).
