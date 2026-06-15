@@ -146,7 +146,10 @@ export async function resolveRanked(
       if (!p.reputation) return { ...p, trust: 0, attestations: 0 };
       try {
         const { trust } = await fetchReputation(p.reputation);
-        return { ...p, trust: trust.score, attestations: trust.count };
+        // Rank by `reputation` (mean rating folded with diversity + decay
+        // confidence), not raw `score`: at equal rating, more distinct, recent,
+        // settlement-backed custom ranks higher — that is the anti-Sybil signal.
+        return { ...p, trust: trust.reputation, attestations: trust.count };
       } catch {
         return { ...p, trust: 0, attestations: 0 };
       }

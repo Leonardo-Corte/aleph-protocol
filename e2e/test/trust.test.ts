@@ -55,11 +55,16 @@ test("computeTrust ignores unbacked attestations and weights by settled value", 
   assert.ok(base);
   // a forged attestation with no settlement backing → must count as zero weight
   const fake = { ...base, settlement: undefined } as unknown as Attestation;
-  const t = computeTrust([...real, fake]);
+  // pin `now` so time-decay is deterministic (the attestations are same-aged here)
+  const t = computeTrust([...real, fake], { now: Date.now() });
   assert.equal(t.count, 2);
   assert.equal(t.totalValue, 40);
-  // weighted: (1.0*10 + 0.5*30) / 40 = 25/40 = 0.625
+  // both from one issuer → value-weighted mean rating: (1.0*10 + 0.5*30)/40 = 0.625
   assert.ok(Math.abs(t.score - 0.625) < 1e-9);
+  assert.equal(t.distinctIssuers, 1);
+  // confidence < 1 with a single issuer; reputation = score * confidence < score
+  assert.ok(t.confidence > 0 && t.confidence < 1);
+  assert.ok(t.reputation < t.score);
 });
 
 test("end-to-end loop: pay -> receipt -> attest -> reputation -> ranked discovery", async () => {
