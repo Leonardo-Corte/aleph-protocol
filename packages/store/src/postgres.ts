@@ -12,7 +12,10 @@ import type {
   SettlementStore,
   Stores,
   Pointer,
+  AttestationPage,
+  ReputationSummary,
 } from "./interfaces";
+import { REPUTATION_PAGE_SIZE } from "./interfaces";
 
 // Minimal structural type for the postgres.js tagged-template client we use.
 type Sql = ((strings: TemplateStringsArray, ...values: unknown[]) => Promise<Row[]>) & {
@@ -41,13 +44,17 @@ CREATE TABLE IF NOT EXISTS node_capabilities (
 CREATE INDEX IF NOT EXISTS idx_caps ON node_capabilities (capability, seq DESC);
 
 CREATE TABLE IF NOT EXISTS attestations (
+  seq           BIGSERIAL,
   subject_did   TEXT NOT NULL,
   settlement_id TEXT NOT NULL,
+  issuer_did    TEXT NOT NULL,
+  amount        DOUBLE PRECISION NOT NULL,
+  att_ts        BIGINT NOT NULL,
   attestation   JSONB NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (subject_did, settlement_id)
 );
-CREATE INDEX IF NOT EXISTS idx_att_subject ON attestations (subject_did);
+CREATE INDEX IF NOT EXISTS idx_att_subject ON attestations (subject_did, seq);
 
 CREATE TABLE IF NOT EXISTS seen_nonces (
   from_did TEXT NOT NULL,
@@ -155,16 +162,45 @@ class PgReputationStore implements ReputationStore {
 
   async addAttestation(att: Attestation): Promise<boolean> {
     const res = await this.sql`
-      INSERT INTO attestations (subject_did, settlement_id, attestation)
-      VALUES (${att.subject}, ${att.settlement.escrowId}, ${this.sql.json(att)})
+      INSERT INTO attestations (subject_did, settlement_id, issuer_did, amount, att_ts, attestation)
+      VALUES (${att.subject}, ${att.settlement.escrowId}, ${att.issued_by}, ${att.settlement.amount}, ${att.ts}, ${this.sql.json(att)})
       ON CONFLICT (subject_did, settlement_id) DO NOTHING RETURNING 1`;
     return res.length > 0;
   }
 
-  async getAttestations(subjectDid: string): Promise<Attestation[]> {
+  async getAttestations(
+    subjectDid: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<AttestationPage> {
+    const limit = opts.limit ?? REPUTATION_PAGE_SIZE;
+    const after = opts.cursor ? Number(opts.cursor) : 0; // cursor = last returned seq
+    // keyset pagination on the monotonic seq — race-free under concurrent inserts.
     const rows = await this.sql`
-      SELECT attestation FROM attestations WHERE subject_did = ${subjectDid} ORDER BY created_at ASC`;
-    return rows.map((r) => r.attestation as Attestation);
+      SELECT seq, attestation FROM attestations
+      WHERE subject_did = ${subjectDid} AND seq > ${after}
+      ORDER BY seq ASC LIMIT ${limit}`;
+    const attestations = rows.map((r) => r.attestation as Attestation);
+    const last = rows[rows.length - 1];
+    return {
+      attestations,
+      nextCursor: rows.length === limit && last ? String(last.seq) : undefined,
+    };
+  }
+
+  async summary(subjectDid: string): Promise<ReputationSummary> {
+    const [row] = await this.sql`
+      SELECT COUNT(*)::int AS count, COUNT(DISTINCT issuer_did)::int AS issuers,
+             COALESCE(SUM(amount), 0)::float8 AS total,
+             MIN(att_ts) AS oldest, MAX(att_ts) AS newest
+      FROM attestations WHERE subject_did = ${subjectDid}`;
+    return {
+      subject: subjectDid,
+      count: Number(row?.count ?? 0),
+      distinctIssuers: Number(row?.issuers ?? 0),
+      totalSettledValue: Number(row?.total ?? 0),
+      oldestTs: row?.oldest != null ? Number(row.oldest) : undefined,
+      newestTs: row?.newest != null ? Number(row.newest) : undefined,
+    };
   }
 }
 

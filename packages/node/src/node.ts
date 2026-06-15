@@ -17,7 +17,12 @@ import { validateSchema, type JsonSchema } from "@aleph/core";
 import { signManifest } from "@aleph/core";
 import { err, type AlephError } from "@aleph/core";
 import { verifyAttestation, type Attestation } from "@aleph/core";
-import { InMemoryReputationStore, type ReputationStore, type SettlementStore } from "@aleph/store";
+import {
+  InMemoryReputationStore,
+  REPUTATION_PAGE_SIZE,
+  type ReputationStore,
+  type SettlementStore,
+} from "@aleph/store";
 import { readJson, sendJson, asyncHandler } from "@aleph/transport";
 
 interface CapabilitySpec {
@@ -111,10 +116,49 @@ export function createNode(opts: NodeOptions) {
           sendJson(res, 200, manifest);
           return;
         }
-        // Serve the raw attestation set (the consumer computes its own trust).
-        if (req.method === "GET" && req.url === "/reputation") {
-          const attestations = await reputation.getAttestations(identity.did);
-          sendJson(res, 200, { subject: identity.did, attestations });
+        const url = new URL(req.url ?? "/", baseUrl);
+
+        // Aggregate summary (count, distinct issuers, settled value, time span)
+        // so an agent can rank candidates without downloading every raw att.
+        if (req.method === "GET" && url.pathname === "/reputation/summary") {
+          const s = await reputation.summary(identity.did);
+          const etag = `"sum-${s.count}-${s.newestTs ?? 0}"`;
+          if (req.headers["if-none-match"] === etag) {
+            res.writeHead(304, { etag });
+            res.end();
+            return;
+          }
+          res.writeHead(200, { "content-type": "application/json", etag });
+          res.end(JSON.stringify(s));
+          return;
+        }
+
+        // Serve the raw attestation set, paginated, with an ETag so a re-fetch
+        // with no new attestations is a cheap 304 (the consumer computes trust).
+        if (req.method === "GET" && url.pathname === "/reputation") {
+          const cursor = url.searchParams.get("cursor") ?? undefined;
+          const limitParam = url.searchParams.get("limit");
+          const limit = limitParam
+            ? Math.max(1, Math.min(Number(limitParam) || REPUTATION_PAGE_SIZE, REPUTATION_PAGE_SIZE))
+            : undefined;
+          // ETag binds the subject's evidence (count + latest ts) to this exact
+          // page request, so new attestations or a different page invalidate it.
+          const s = await reputation.summary(identity.did);
+          const etag = `"rep-${s.count}-${s.newestTs ?? 0}-${cursor ?? ""}-${limit ?? ""}"`;
+          if (req.headers["if-none-match"] === etag) {
+            res.writeHead(304, { etag });
+            res.end();
+            return;
+          }
+          const page = await reputation.getAttestations(identity.did, { cursor, limit });
+          res.writeHead(200, { "content-type": "application/json", etag });
+          res.end(
+            JSON.stringify({
+              subject: identity.did,
+              attestations: page.attestations,
+              nextCursor: page.nextCursor,
+            }),
+          );
           return;
         }
         // Receive an attestation written about this node; store only if it is

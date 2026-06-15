@@ -8,7 +8,10 @@ export type {
   ReputationStore,
   SettlementStore,
   Stores,
+  AttestationPage,
+  ReputationSummary,
 } from "./interfaces";
+export { REPUTATION_PAGE_SIZE } from "./interfaces";
 
 export {
   InMemoryStores,

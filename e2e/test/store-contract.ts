@@ -75,11 +75,12 @@ export function runStoreContract(name: string, make: () => Promise<Stores>): voi
       assert.equal(await s.reputation.addAttestation(att), true);
       // same settlement again → rejected (one settlement, one attestation)
       assert.equal(await s.reputation.addAttestation(att), false);
-      const list = await s.reputation.getAttestations(payee.did);
-      assert.equal(list.length, 1);
-      assert.equal(list[0]?.subject, payee.did);
-      assert.equal(list[0]?.settlement.escrowId, att.settlement.escrowId);
-      assert.equal((await s.reputation.getAttestations(generateIdentity().did)).length, 0);
+      const page = await s.reputation.getAttestations(payee.did);
+      assert.equal(page.attestations.length, 1);
+      assert.equal(page.attestations[0]?.subject, payee.did);
+      assert.equal(page.attestations[0]?.settlement.escrowId, att.settlement.escrowId);
+      assert.equal(page.nextCursor, undefined);
+      assert.equal((await s.reputation.getAttestations(generateIdentity().did)).attestations.length, 0);
     } finally {
       await s.close();
     }
@@ -121,7 +122,58 @@ export function runStoreContract(name: string, make: () => Promise<Stores>): voi
         1,
         "exactly one attestation per settlement under concurrency (anti-Sybil holds)",
       );
-      assert.equal((await s.reputation.getAttestations(payee.did)).length, 1);
+      assert.equal((await s.reputation.getAttestations(payee.did)).attestations.length, 1);
+    } finally {
+      await s.close();
+    }
+  });
+
+  test(`[${name}] reputation: pagination (keyset) + summary aggregate`, async () => {
+    const s = await make();
+    try {
+      // a single payee attested by 5 distinct payers, each a real settlement
+      const payee = generateIdentity();
+      const rail = new SettlementRail();
+      let total = 0;
+      for (let i = 0; i < 5; i++) {
+        const payer = generateIdentity();
+        const amount = i + 1; // 1..5
+        total += amount;
+        rail.deposit(payer.did, amount);
+        const lock = rail.lock(payer.did, payee.did, amount, "ref-" + i);
+        if (!lock.ok) throw new Error("lock failed");
+        const settlement = rail.release(lock.escrow.id);
+        const att = createAttestation(payer, { subject: payee.did, settlement, rating: 1 });
+        assert.equal(await s.reputation.addAttestation(att), true);
+      }
+
+      // walk pages of size 2 → 2 + 2 + 1, no duplicates, no omissions
+      const seen = new Set<string>();
+      let cursor: string | undefined;
+      let pages = 0;
+      do {
+        const page = await s.reputation.getAttestations(payee.did, { limit: 2, cursor });
+        pages++;
+        assert.ok(page.attestations.length <= 2);
+        for (const a of page.attestations) seen.add(a.settlement.escrowId);
+        cursor = page.nextCursor;
+      } while (cursor);
+      assert.equal(seen.size, 5);
+      assert.equal(pages, 3);
+
+      // the aggregate summary matches, computed at the DB
+      const summary = await s.reputation.summary(payee.did);
+      assert.equal(summary.subject, payee.did);
+      assert.equal(summary.count, 5);
+      assert.equal(summary.distinctIssuers, 5);
+      assert.equal(summary.totalSettledValue, total);
+      assert.ok(summary.oldestTs && summary.newestTs && summary.oldestTs <= summary.newestTs);
+
+      // empty subject → zeroed summary
+      const empty = await s.reputation.summary(generateIdentity().did);
+      assert.equal(empty.count, 0);
+      assert.equal(empty.distinctIssuers, 0);
+      assert.equal(empty.totalSettledValue, 0);
     } finally {
       await s.close();
     }

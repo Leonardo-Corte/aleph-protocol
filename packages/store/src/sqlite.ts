@@ -13,7 +13,10 @@ import type {
   SettlementStore,
   Stores,
   Pointer,
+  AttestationPage,
+  ReputationSummary,
 } from "./interfaces";
+import { REPUTATION_PAGE_SIZE } from "./interfaces";
 
 // node:sqlite is a builtin that exists ONLY under the `node:` prefix (unlike
 // `crypto`/`http`), so a bundler that strips the prefix breaks it. Load it at
@@ -41,13 +44,17 @@ CREATE TABLE IF NOT EXISTS node_capabilities (
 CREATE INDEX IF NOT EXISTS idx_caps ON node_capabilities (capability, seq DESC);
 
 CREATE TABLE IF NOT EXISTS attestations (
+  seq           INTEGER PRIMARY KEY AUTOINCREMENT,
   subject_did   TEXT NOT NULL,
   settlement_id TEXT NOT NULL,
+  issuer_did    TEXT NOT NULL,
+  amount        REAL NOT NULL,
+  att_ts        INTEGER NOT NULL,
   attestation   TEXT NOT NULL,
   created_at    INTEGER NOT NULL,
-  PRIMARY KEY (subject_did, settlement_id)
+  UNIQUE (subject_did, settlement_id)
 );
-CREATE INDEX IF NOT EXISTS idx_att_subject ON attestations (subject_did);
+CREATE INDEX IF NOT EXISTS idx_att_subject ON attestations (subject_did, seq);
 
 CREATE TABLE IF NOT EXISTS seen_nonces (
   from_did TEXT NOT NULL,
@@ -168,9 +175,17 @@ class SqliteReputationStore implements ReputationStore {
     try {
       this.db
         .prepare(
-          "INSERT INTO attestations (subject_did, settlement_id, attestation, created_at) VALUES (?, ?, ?, ?)",
+          "INSERT INTO attestations (subject_did, settlement_id, issuer_did, amount, att_ts, attestation, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .run(att.subject, att.settlement.escrowId, JSON.stringify(att), Date.now());
+        .run(
+          att.subject,
+          att.settlement.escrowId,
+          att.issued_by,
+          att.settlement.amount,
+          att.ts,
+          JSON.stringify(att),
+          Date.now(),
+        );
       return Promise.resolve(true);
     } catch {
       // UNIQUE(subject, settlement) violation → one settlement, one attestation.
@@ -178,11 +193,48 @@ class SqliteReputationStore implements ReputationStore {
     }
   }
 
-  getAttestations(subjectDid: string): Promise<Attestation[]> {
+  getAttestations(
+    subjectDid: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<AttestationPage> {
+    const limit = opts.limit ?? REPUTATION_PAGE_SIZE;
+    const after = opts.cursor ? Number(opts.cursor) : 0; // cursor = last returned seq
+    // keyset pagination on the monotonic seq: stable under concurrent inserts.
     const rows = this.db
-      .prepare("SELECT attestation FROM attestations WHERE subject_did = ? ORDER BY created_at ASC")
-      .all(subjectDid) as { attestation: string }[];
-    return Promise.resolve(rows.map((r) => JSON.parse(r.attestation) as Attestation));
+      .prepare(
+        "SELECT seq, attestation FROM attestations WHERE subject_did = ? AND seq > ? ORDER BY seq ASC LIMIT ?",
+      )
+      .all(subjectDid, after, limit) as { seq: number; attestation: string }[];
+    const attestations = rows.map((r) => JSON.parse(r.attestation) as Attestation);
+    const last = rows[rows.length - 1];
+    return Promise.resolve({
+      attestations,
+      nextCursor: rows.length === limit && last ? String(last.seq) : undefined,
+    });
+  }
+
+  summary(subjectDid: string): Promise<ReputationSummary> {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS count, COUNT(DISTINCT issuer_did) AS issuers,
+                COALESCE(SUM(amount), 0) AS total, MIN(att_ts) AS oldest, MAX(att_ts) AS newest
+         FROM attestations WHERE subject_did = ?`,
+      )
+      .get(subjectDid) as {
+      count: number;
+      issuers: number;
+      total: number;
+      oldest: number | null;
+      newest: number | null;
+    };
+    return Promise.resolve({
+      subject: subjectDid,
+      count: row.count,
+      distinctIssuers: row.issuers,
+      totalSettledValue: row.total,
+      oldestTs: row.oldest ?? undefined,
+      newestTs: row.newest ?? undefined,
+    });
   }
 }
 

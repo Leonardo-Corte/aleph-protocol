@@ -11,6 +11,18 @@ import { createEnvelope, verifyEnvelope, type Envelope } from "@aleph/core";
 import { verifySettlement, type SettlementRail, type SettlementRecord } from "@aleph/core";
 import { createAttestation, computeTrust, type Attestation } from "@aleph/core";
 
+// The aggregate reputation summary as served on the wire by a node. Declared
+// here (not imported from @aleph/store) so the agent SDK stays free of any
+// server-side storage dependency — it only consumes this JSON response.
+export interface ReputationSummary {
+  subject: string;
+  count: number;
+  distinctIssuers: number;
+  totalSettledValue: number;
+  oldestTs?: number;
+  newestTs?: number;
+}
+
 export interface Pointer {
   did: string;
   manifest: string;
@@ -124,13 +136,36 @@ export async function attest(opts: {
 }
 
 // TRUST (read) — fetch a node's raw attestations and compute trust locally.
+// Follows pagination to the end so trust is computed over the FULL evidence set;
+// a node cannot truncate its bad history into invisibility by paginating.
 export async function fetchReputation(
   reputationUrl: string,
 ): Promise<{ attestations: Attestation[]; trust: ReturnType<typeof computeTrust> }> {
-  const res = await fetch(reputationUrl);
-  const json = (await res.json()) as { attestations?: Attestation[] };
-  const attestations = json.attestations ?? [];
+  const attestations: Attestation[] = [];
+  let cursor: string | undefined;
+  do {
+    const url = new URL(reputationUrl);
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const res = await fetch(url);
+    const json = (await res.json()) as { attestations?: Attestation[]; nextCursor?: string };
+    attestations.push(...(json.attestations ?? []));
+    cursor = json.nextCursor;
+  } while (cursor);
   return { attestations, trust: computeTrust(attestations) };
+}
+
+// TRUST (read, cheap) — fetch only the aggregate summary, with conditional
+// support: pass a prior ETag to get a 304 (and reuse the cached summary) when
+// nothing changed. Returns the ETag so the caller can cache it.
+export async function fetchReputationSummary(
+  reputationUrl: string,
+  etag?: string,
+): Promise<{ summary?: ReputationSummary; etag?: string; notModified: boolean }> {
+  const summaryUrl = reputationUrl.replace(/\/reputation$/, "/reputation/summary");
+  const res = await fetch(summaryUrl, etag ? { headers: { "if-none-match": etag } } : undefined);
+  const newEtag = res.headers.get("etag") ?? undefined;
+  if (res.status === 304) return { notModified: true, etag: etag ?? newEtag };
+  return { summary: (await res.json()) as ReputationSummary, etag: newEtag, notModified: false };
 }
 
 // FIND + TRUST — resolve candidates and rank them by consumer-computed trust.

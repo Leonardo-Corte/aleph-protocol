@@ -32,14 +32,41 @@ export interface NonceStore {
   gc(beforeTs: number): Promise<number>;
 }
 
+// Default reputation page size (capped per request so a node can't be made to
+// serialize an unbounded set in one response).
+export const REPUTATION_PAGE_SIZE = 100;
+
 // --- Reputation (attestations) ---
+
+// One page of a subject's raw attestations. `nextCursor` is an opaque token;
+// pass it back as `cursor` to fetch the following page. Absent => last page.
+export interface AttestationPage {
+  attestations: Attestation[];
+  nextCursor?: string;
+}
+
+// An aggregate view of a subject's reputation, computed at the DB, so an agent
+// can rank candidates without downloading every raw attestation. The raw set
+// stays available (getAttestations) for full, independent verification.
+export interface ReputationSummary {
+  subject: string;
+  count: number; // total attestations
+  distinctIssuers: number; // distinct attesting DIDs (the diversity signal)
+  totalSettledValue: number; // Σ settled value backing them
+  oldestTs?: number; // earliest attestation ts (undefined if none)
+  newestTs?: number; // latest attestation ts
+}
+
 export interface ReputationStore {
   // Store an attestation about a subject. Idempotent on (subject, settlement):
   // returns false if that settlement already backs a stored attestation
   // (the anti-Sybil "one settlement, one attestation" rule, enforced at the DB).
   addAttestation(att: Attestation): Promise<boolean>;
-  // The raw attestation set for a subject (the consumer computes its own trust).
-  getAttestations(subjectDid: string): Promise<Attestation[]>;
+  // A page of the raw attestation set for a subject, oldest-first, stably
+  // ordered (keyset pagination). Default limit is the driver's page size.
+  getAttestations(subjectDid: string, opts?: { limit?: number; cursor?: string }): Promise<AttestationPage>;
+  // The aggregate summary (cheap to fetch, derived from indexed columns).
+  summary(subjectDid: string): Promise<ReputationSummary>;
 }
 
 // --- Settlement history (durable record, forward-compatible with the on-chain rail) ---

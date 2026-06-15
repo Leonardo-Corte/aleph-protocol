@@ -10,7 +10,10 @@ import type {
   SettlementStore,
   Stores,
   Pointer,
+  AttestationPage,
+  ReputationSummary,
 } from "./interfaces";
+import { REPUTATION_PAGE_SIZE } from "./interfaces";
 
 export class InMemoryRegistryStore implements RegistryStore {
   private byCapability = new Map<string, Pointer[]>();
@@ -69,13 +72,46 @@ export class InMemoryReputationStore implements ReputationStore {
     if (this.seenSettlements.has(key)) return Promise.resolve(false);
     this.seenSettlements.add(key);
     const list = this.bySubject.get(att.subject) ?? [];
-    list.push(att);
+    list.push(att); // insertion order is the stable, oldest-first ordering
     this.bySubject.set(att.subject, list);
     return Promise.resolve(true);
   }
 
-  getAttestations(subjectDid: string): Promise<Attestation[]> {
-    return Promise.resolve(this.bySubject.get(subjectDid) ?? []);
+  getAttestations(
+    subjectDid: string,
+    opts: { limit?: number; cursor?: string } = {},
+  ): Promise<AttestationPage> {
+    const list = this.bySubject.get(subjectDid) ?? [];
+    const start = opts.cursor ? Number(opts.cursor) : 0; // cursor = index into the list
+    const limit = opts.limit ?? REPUTATION_PAGE_SIZE;
+    const slice = list.slice(start, start + limit);
+    const end = start + slice.length;
+    return Promise.resolve({
+      attestations: slice,
+      nextCursor: end < list.length ? String(end) : undefined,
+    });
+  }
+
+  summary(subjectDid: string): Promise<ReputationSummary> {
+    const list = this.bySubject.get(subjectDid) ?? [];
+    const issuers = new Set<string>();
+    let totalSettledValue = 0;
+    let oldestTs: number | undefined;
+    let newestTs: number | undefined;
+    for (const att of list) {
+      issuers.add(att.issued_by);
+      totalSettledValue += att.settlement.amount;
+      oldestTs = oldestTs === undefined ? att.ts : Math.min(oldestTs, att.ts);
+      newestTs = newestTs === undefined ? att.ts : Math.max(newestTs, att.ts);
+    }
+    return Promise.resolve({
+      subject: subjectDid,
+      count: list.length,
+      distinctIssuers: issuers.size,
+      totalSettledValue,
+      oldestTs,
+      newestTs,
+    });
   }
 }
 
