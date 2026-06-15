@@ -72,6 +72,43 @@ export function verifyAttestation(att: Attestation): { ok: boolean; reason?: str
   return { ok: true };
 }
 
+// --- Revocation --------------------------------------------------------------
+// An issuer who attested in error can publish a signed revocation referencing
+// the attestation (by its signature). Only the ORIGINAL issuer can revoke its
+// own attestation: the revocation is signed by the same DID, and computeTrust
+// only honours a revocation whose issuer matches the attestation's issuer.
+
+export interface Revocation {
+  v: string;
+  attestation_sig: string; // the sig of the attestation being revoked (its unique id)
+  issued_by: string; // must equal the revoked attestation's issued_by
+  ts: number;
+  sig: string;
+}
+
+export function createRevocation(issuer: Identity, attestationSig: string): Revocation {
+  const base = {
+    v: "aleph/0.1",
+    attestation_sig: attestationSig,
+    issued_by: issuer.did,
+    ts: Date.now(),
+  };
+  const sig = signEd25519(DOMAIN.revocation, base, issuer.privateKey);
+  return { ...base, sig };
+}
+
+export function verifyRevocation(rev: Revocation): { ok: boolean; reason?: string } {
+  const { sig, ...base } = rev;
+  try {
+    if (!verifyByDid(rev.issued_by, DOMAIN.revocation, base, sig)) {
+      return { ok: false, reason: "bad revocation signature" };
+    }
+  } catch (e) {
+    return { ok: false, reason: (e as Error).message };
+  }
+  return { ok: true };
+}
+
 // --- The trust policy (consumer-controlled, default specified) ---------------
 
 export interface TrustPolicy {
@@ -127,12 +164,23 @@ export const DEFAULT_TRUST_POLICY: Required<Omit<TrustPolicy, "now" | "decay">> 
 // diminishing returns (so 100 attestations from one payer ≪ 100 distinct
 // payers), decay by age, and fold confidence in. The result is fully auditable:
 // `perIssuer` exposes every input the score is built from.
-export function computeTrust(attestations: Attestation[], policy: TrustPolicy = {}): TrustScore {
+export function computeTrust(
+  attestations: Attestation[],
+  policy: TrustPolicy = {},
+  revocations: Revocation[] = [],
+): TrustScore {
   const now = policy.now ?? Date.now();
   const halfLife = policy.halfLifeMs ?? DEFAULT_HALF_LIFE_MS;
   const decay = policy.decay ?? ((age: number) => Math.pow(0.5, age / halfLife));
   const issuerWeight = policy.issuerWeight ?? DEFAULT_TRUST_POLICY.issuerWeight;
   const k = policy.confidenceScale ?? DEFAULT_CONFIDENCE_SCALE;
+
+  // A revocation only bites if it is validly signed; the issuer-match check is
+  // applied per attestation below (only the original issuer can revoke its own).
+  const revokedBy = new Map<string, string>(); // attestation_sig -> revoker DID
+  for (const rev of revocations) {
+    if (verifyRevocation(rev).ok) revokedBy.set(rev.attestation_sig, rev.issued_by);
+  }
 
   const seen = new Set<string>(); // settlement ids — dedupe so a payment counts once
   const byIssuer = new Map<string, { dvalue: number; weightedRating: number; rawValue: number; n: number }>();
@@ -141,6 +189,7 @@ export function computeTrust(attestations: Attestation[], policy: TrustPolicy = 
 
   for (const att of attestations) {
     if (!verifyAttestation(att).ok) continue; // unbacked / invalid => zero weight
+    if (revokedBy.get(att.sig) === att.issued_by) continue; // revoked by its own issuer
     const id = att.settlement.escrowId;
     if (seen.has(id)) continue;
     seen.add(id);

@@ -14,6 +14,7 @@ export const DOMAIN = {
   envelope: "aleph/0.1:envelope",
   grant: "aleph/0.1:grant",
   attestation: "aleph/0.1:attestation",
+  revocation: "aleph/0.1:revocation",
   settlement: "aleph/0.1:settlement",
   manifest: "aleph/0.1:manifest",
 } as const;

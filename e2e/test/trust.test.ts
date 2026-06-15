@@ -8,7 +8,13 @@ import { test } from "node:test";
 import { invoke, attest, fetchReputation, resolveRanked } from "@aleph/client";
 import { generateIdentity } from "@aleph/core";
 import { SettlementRail } from "@aleph/core";
-import { createAttestation, verifyAttestation, computeTrust, type Attestation } from "@aleph/core";
+import {
+  createAttestation,
+  verifyAttestation,
+  computeTrust,
+  createRevocation,
+  type Attestation,
+} from "@aleph/core";
 import { createNode } from "@aleph/node";
 import { createRegistry } from "@aleph/registry";
 
@@ -65,6 +71,45 @@ test("computeTrust ignores unbacked attestations and weights by settled value", 
   // confidence < 1 with a single issuer; reputation = score * confidence < score
   assert.ok(t.confidence > 0 && t.confidence < 1);
   assert.ok(t.reputation < t.score);
+});
+
+test("negative attestations lower the score; a signed revocation removes weight", () => {
+  const rail = new SettlementRail();
+  const payer = generateIdentity();
+  const payee = generateIdentity();
+  rail.deposit(payer.did, 100);
+  const now = Date.now();
+
+  const mk = (amount: number, rating: number) => {
+    const lock = rail.lock(payer.did, payee.did, amount, "r" + Math.random());
+    const s = rail.release((lock as { escrow: { id: string } }).escrow.id);
+    return createAttestation(payer, { subject: payee.did, settlement: s, rating });
+  };
+
+  const good = mk(10, 1.0);
+  const bad = mk(10, 0.0); // a fully negative attestation, same settled value
+
+  // both count → value-weighted mean rating drops to 0.5
+  const both = computeTrust([good, bad], { now });
+  assert.equal(both.count, 2);
+  assert.ok(Math.abs(both.score - 0.5) < 1e-9);
+
+  // the issuer revokes the negative one → only the positive remains
+  const rev = createRevocation(payer, bad.sig);
+  const after = computeTrust([good, bad], { now }, [rev]);
+  assert.equal(after.count, 1);
+  assert.ok(Math.abs(after.score - 1.0) < 1e-9);
+
+  // a revocation NOT signed by the original issuer must not bite
+  const stranger = generateIdentity();
+  const forgedRev = createRevocation(stranger, good.sig);
+  const tampered = computeTrust([good, bad], { now }, [forgedRev]);
+  assert.equal(tampered.count, 2); // good survives the bogus revocation
+
+  // ratings are constrained to [0,1]
+  assert.throws(() =>
+    createAttestation(payer, { subject: payee.did, settlement: good.settlement, rating: -1 }),
+  );
 });
 
 test("end-to-end loop: pay -> receipt -> attest -> reputation -> ranked discovery", async () => {
