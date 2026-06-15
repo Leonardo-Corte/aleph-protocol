@@ -227,6 +227,40 @@ overclaiming a solution.
 
 ---
 
+## D9 — Registry at scale: replicating index, filtered discovery, anti-entropy federation
+
+**Decision.**
+
+- **The registry is a replicating index, not an authority** (end-to-end
+  principle). It indexes only **authentic, self-signed Manifests** (re-verified
+  on register AND on every federated pull), and the agent **re-verifies the
+  Manifest and recomputes trust** at the edge. A forged/substituted Manifest is
+  rejected by the client (`fetchManifest` checks signature + pins the DID).
+- **Filtered, paginated, indexed discovery.** `RESOLVE` is an indexed query with
+  a `ResolveFilter` (capability + `maxPrice` + `region` + reputation hints
+  `minIssuers`/`minSettled`) and keyset pagination on a monotonic `rev`. Price
+  comes from `cost.value`; region from `manifest.ext.region` (no change to the
+  near-frozen Manifest core). The agent pulls fewer candidates (pull-not-push).
+- **Reputation hint is non-authoritative.** The registry stores a coarse
+  reputation snapshot (count / distinct issuers / settled value), fetched
+  best-effort from the node's `/reputation/summary`, as a pre-filter only. Real
+  trust stays consumer-computed (D8).
+- **Federation = gossip + anti-entropy.** Gossip-on-write is best-effort; the
+  backstop is a `GET /since?rev=` delta feed that peers pull and reconcile
+  (per-peer cursor, re-verify, idempotent upsert). Eventually consistent,
+  loop-free, no global authority — a peer that was offline catches up.
+- **Caching.** ETag + Cache-Control on `/manifest` (304 on re-fetch); a
+  short-TTL registry read cache for hot resolves, invalidated on every write.
+  Stated target p99 RESOLVE < 50 ms (warm, in-memory), tested.
+
+**Why.** Discovery is where network value (and censorship risk) concentrates, so
+it must be fast, persistent, and federated — yet never a control point. Keeping
+the registry a dumb, re-verifiable, eventually-consistent replicator (trust
+re-established by the agent) is what keeps the network the set of nodes, not any
+registry.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
@@ -238,3 +272,6 @@ overclaiming a solution.
 - 2026-06-15 — D8 decided (reputation: pluggable trust policy, diversity-weighted
   default, decay/revocation/negatives, on-chain verification hook, pagination;
   staking deferred to a planned AIP; ROADMAP §5).
+- 2026-06-15 — D9 decided (registry at scale: replicating index, filtered+paged
+  indexed discovery, anti-entropy federation, lazy manifest re-verification,
+  caching; ROADMAP §6). Closes Milestone M2.

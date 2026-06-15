@@ -586,11 +586,11 @@ The prototype gossips on registration. Production federation needs:
 - Load targets: define and test (e.g. p99 RESOLVE latency < 50ms at X req/s).
 
 **Acceptance criteria for Section 6.**
-- [ ] RESOLVE is an indexed DB query with capability + reputation + price filtering and pagination.
-- [ ] Two registries reconcile via anti-entropy: stop one, register at the other, restart, and it catches up.
-- [ ] A registry re-verifies Manifests (signed) before indexing; a forged Manifest is rejected.
-- [ ] A load test meets a stated p99 latency target.
-- [ ] Documentation: "how to run your own registry and federate it."
+- [x] RESOLVE is an indexed DB query with capability + reputation + price filtering and pagination. *(ResolveFilter: maxPrice/region/minIssuers/minSettled + keyset pagination on rev; store contract proves it on every driver.)*
+- [x] Two registries reconcile via anti-entropy: stop one, register at the other, restart, and it catches up. *(GET /since feed + reconcile(); network.test "offline peer catches up".)*
+- [x] A registry re-verifies Manifests (signed) before indexing; a forged Manifest is rejected. *(verifyManifest on register AND on federated pull; client fetchManifest re-verifies + pins DID; network.test rejects forged/substituted/unsigned.)*
+- [x] A load test meets a stated p99 latency target. *(p99 RESOLVE < 50ms warm in-memory; measured p50≈0.35ms / p99≈1.2ms over N=300 — perf.test.)*
+- [x] Documentation: "how to run your own registry and federate it." *(spec/REGISTRY.md.)*
 
 **Risks.** Federation correctness (split-brain, stale data) is subtle; keep the model simple (re-verifiable, idempotent, eventually-consistent) and test the catch-up path. Resist making the registry "smart" — it is a replicating index, not an authority (the end-to-end principle).
 

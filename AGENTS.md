@@ -84,15 +84,17 @@ packages/                      # pnpm workspace, @aleph/* packages
   node/        @aleph/node      — capability provider runtime. Signs its Manifest;
                verifies grant+schema+escrow; pluggable stores.
   registry/    @aleph/registry  — discovery; verifies Manifest sig; RegistryStore;
-               federation (gossip).
-  client/      @aleph/client    — agent SDK (THE target): resolve/resolveRanked/
-               invoke/attest/fetchReputation (paginated)/fetchReputationSummary/
-               compose.
+               filtered+paged RESOLVE; federation (gossip + anti-entropy /since +
+               reconcile); short-TTL resolve cache.
+  client/      @aleph/client    — agent SDK (THE target): resolve (filtered/paged)/
+               resolveRanked/invoke/attest/fetchReputation (paginated)/
+               fetchReputationSummary/fetchManifest (re-verifies + pins DID)/compose.
   mcp/         @aleph/mcp       — Aleph as an MCP server (aleph_resolve/aleph_invoke).
   cli/         @aleph/cli       — keygen/registry/node/resolve/invoke; EncryptedFileKeyStore.
   store/       @aleph/store     — async repos (Registry/Nonce/Reputation/Settlement)
                + drivers: in-memory, SQLite (node:sqlite), Postgres (postgres.js).
-               Reputation: keyset pagination + summary aggregate.
+               Reputation: keyset pagination + summary. Registry: price/region/rep
+               columns, filtered resolve, monotonic rev + changesSince feed.
   settle-evm/  @aleph/settle-evm — on-chain rail (viem) against AlephEscrow;
                evmSettlementVerifier (chain-reading trust hook).
 contracts/                     # Foundry project (gitignored: lib/ out/ cache/)
@@ -109,6 +111,7 @@ spec/
   SETTLEMENT.md                 — on-chain settlement design + deploy procedure
   REPUTATION.md                 — trust policy spec (diversity weighting, decay,
                                   revocation, on-chain verification, pagination)
+  REGISTRY.md                   — discovery/federation + run-your-own-registry guide
 conformance/python/            — independent Python impl (proves cross-language)
 .github/workflows/ci.yml       — 6 jobs (see §5)
 ```
@@ -141,10 +144,9 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **67 tests (66 pass, 1 skipped = postgres without DATABASE_URL)**,
-all gates green (coverage stmts ~90.8 / funcs ~81.8 / branches ~78.3). Coverage
-thresholds: lines/stmts 88, funcs 75, branches 68 (functions lowered because the
-Postgres/EVM drivers are CI-only).
+Current state: **75 tests (74 pass, 1 skipped = postgres without DATABASE_URL)**,
+all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
+(functions lowered because the Postgres/EVM drivers are CI-only).
 
 ---
 
@@ -194,20 +196,24 @@ Six jobs, all must stay green:
 async stores + SQLite/Postgres + restart durability) · S3 (hardened core: RFC
 8785, domain separation, signed Manifest, Ed25519+secp256k1, did:web, key
 mgmt/rotation, cross-language proof) · S4 (on-chain settlement: AlephEscrow +
-viem rail + anvil integration + Foundry CI) · **S5 (reputation & anti-Sybil at
+viem rail + anvil integration + Foundry CI) · S5 (reputation & anti-Sybil at
 scale: pluggable diversity-weighted TrustPolicy, decay, negative attestations +
 signed revocation, on-chain verification hook, paginated/summarised retrieval,
-wash-trading acceptance test — see DECISIONS D8, spec/REPUTATION.md)**.
+wash-trading acceptance test — DECISIONS D8, spec/REPUTATION.md) · **S6 (registry
+at scale: filtered+paged indexed discovery, anti-entropy federation /since +
+reconcile, lazy manifest re-verification + DID pinning, ETag/cache + p99 load
+test — DECISIONS D9, spec/REGISTRY.md). Closes Milestone M2.**
 
 **Deferred (tracked):** `did:pkh` (eip155 recovery) → chain tooling, and it now
 also gates binding on-chain settlement *addresses* to attesting *DIDs* (S5.3);
 public-testnet deploy of AlephEscrow → owner's manual step (verified on anvil);
 **staking/slashing** for reputation → a planned AIP (D8).
 
-**NEXT — Section 6: The registry at scale (discovery, federation, persistence,
-caching).** Per ROADMAP §6: persistent indexed discovery, robust federation
-(gossip dedupe/backoff), manifest hosting & verification, caching/perf. Closes
-Milestone M2. Then M3 = S7 security / S8 observability / S9 deploy.
+**NEXT — Section 7: Security (threat model, authz, rate limiting, audit).** Per
+ROADMAP §7: write the threat model, fully specify + test the authorization
+model, abuse defenses (rate limiting), agent-side safety, then the external
+audit gate to mainnet. Begins Milestone M3 (S7 security / S8 observability /
+S9 deploy).
 
 ---
 
