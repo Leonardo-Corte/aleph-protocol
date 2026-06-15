@@ -75,7 +75,12 @@ export function createRegistry(opts: {
   // Observability: structured logger + metrics registry (served at /metrics).
   logger?: Logger;
   metrics?: MetricsRegistry;
+  // Deployment: bind address (default loopback; 0.0.0.0 in a container) and the
+  // external base URL (for the `url` this registry reports). Default http://<host>:<port>.
+  host?: string;
+  publicUrl?: string;
 }) {
+  const host = opts.host ?? "127.0.0.1";
   const store: RegistryStore = opts.store ?? new InMemoryRegistryStore();
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
   const peers = opts.peers ?? [];
@@ -164,6 +169,11 @@ export function createRegistry(opts: {
           errors.inc({ code: "RATE_LIMITED" });
           reqLog.warn("rate_limited");
           sendJson(res, 429, { error: err("RATE_LIMITED", "rate limit exceeded") });
+          return;
+        }
+        // Liveness/readiness probe (Docker/K8s healthcheck target).
+        if (req.method === "GET" && req.url === "/healthz") {
+          sendJson(res, 200, { ok: true, peers: peers.length, uptime: process.uptime() });
           return;
         }
         // Metrics scrape endpoint (Prometheus text format).
@@ -255,13 +265,13 @@ export function createRegistry(opts: {
   hardenServer(server);
 
   return {
-    url: `http://127.0.0.1:${opts.port}`,
+    url: opts.publicUrl ?? `http://${host}:${opts.port}`,
     // Pull deltas from all peers now (the anti-entropy backstop). Exposed so
     // tests can drive it deterministically; production uses reconcileIntervalMs.
     reconcile,
     listen: () =>
       new Promise<void>((r) =>
-        server.listen(opts.port, "127.0.0.1", () => {
+        server.listen(opts.port, host, () => {
           if (opts.reconcileIntervalMs) {
             reconcileTimer = setInterval(() => void reconcile(), opts.reconcileIntervalMs);
             reconcileTimer.unref?.(); // never keep the process alive for it

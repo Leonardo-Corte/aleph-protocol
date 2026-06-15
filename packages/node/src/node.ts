@@ -63,11 +63,17 @@ export interface NodeOptions {
   // and a metrics registry (its counters/histograms are served at /metrics).
   logger?: Logger;
   metrics?: MetricsRegistry;
+  // Deployment: bind address (default loopback; set 0.0.0.0 in a container) and
+  // the EXTERNAL base URL advertised in the Manifest (endpoint + reputation
+  // pointer) when behind a proxy/domain. Defaults to http://<host>:<port>.
+  host?: string;
+  publicUrl?: string;
 }
 
 export function createNode(opts: NodeOptions) {
   const { identity, port } = opts;
-  const baseUrl = `http://127.0.0.1:${port}`;
+  const host = opts.host ?? "127.0.0.1";
+  const baseUrl = opts.publicUrl ?? `http://${host}:${port}`;
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
   const limiter = new RateLimiter(opts.rateLimit ?? { capacity: 2000, refillPerSec: 200 });
   const log = (opts.logger ?? createLogger()).child({ service: "node", node: identity.did });
@@ -152,6 +158,11 @@ export function createNode(opts: NodeOptions) {
           errors.inc({ code: "RATE_LIMITED" });
           reqLog.warn("rate_limited");
           sendJson(res, 429, { error: err("RATE_LIMITED", "rate limit exceeded") });
+          return;
+        }
+        // Liveness/readiness probe (Docker/K8s healthcheck target).
+        if (req.method === "GET" && req.url === "/healthz") {
+          sendJson(res, 200, { ok: true, did: identity.did, uptime: process.uptime() });
           return;
         }
         // Metrics scrape endpoint (Prometheus text format).
@@ -377,7 +388,7 @@ export function createNode(opts: NodeOptions) {
     url: baseUrl,
     listen: () =>
       new Promise<void>((r) =>
-        server.listen(port, "127.0.0.1", () => {
+        server.listen(port, host, () => {
           r();
         }),
       ),
