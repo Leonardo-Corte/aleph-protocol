@@ -11,6 +11,7 @@ import { validateSchema, type JsonSchema } from "@aleph/core";
 import { createEnvelope, verifyEnvelope, type Envelope } from "@aleph/core";
 import { type PayerRail, type EscrowRef, type SettlementRecord } from "@aleph/core";
 import { createAttestation, computeTrust, type Attestation } from "@aleph/core";
+import { isDidPkh, parseDidPkh } from "@aleph/core";
 
 // Trace correlation: the agent stamps a trace id on its outbound calls so one
 // logical operation is followable across registry and node logs end to end.
@@ -132,12 +133,17 @@ export async function invoke<S = SettlementRecord>(opts: {
   let payment: EscrowRef | undefined;
   if (opts.payEur && opts.payEur > 0) {
     if (!opts.rail) throw new Error("payEur set but no rail provided");
+    // Bind the payout to the node's IDENTITY: if the node's DID is did:pkh, the
+    // payout address IS the DID's address — derived, not a trusted self-assertion
+    // (ext.payTo). An explicit payeeAddress still overrides for non-pkh nodes.
+    const payeeAddress =
+      opts.payeeAddress ?? (isDidPkh(opts.nodeDid) ? parseDidPkh(opts.nodeDid).address : undefined);
     const lock = await opts.rail.lockEscrow({
       payer: opts.agent.did,
       payee: opts.nodeDid,
       amount: opts.payEur,
       invokeRef: "pay-" + randomUUID(),
-      payeeAddress: opts.payeeAddress,
+      payeeAddress,
     });
     if (!lock.ok) throw new Error("payment lock failed: " + lock.reason);
     payment = lock.ref;

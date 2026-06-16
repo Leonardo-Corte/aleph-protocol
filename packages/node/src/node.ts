@@ -6,9 +6,10 @@
 
 import http from "node:http";
 import type { ServerResponse } from "node:http";
-import type { Identity, NonceChecker } from "@aleph/core";
+import type { Identity, NonceChecker, PkhIdentity, Signer } from "@aleph/core";
 import type { Manifest } from "@aleph/core";
 import type { PayeeRail, EscrowRef, SettlementRecord } from "@aleph/core";
+import { pkhSigner, isSigner } from "@aleph/core";
 import { createEnvelope, type Envelope } from "@aleph/core";
 import { NonceStore, verifyReceived } from "@aleph/core";
 import { verifyGrant, type Grant } from "@aleph/core";
@@ -49,7 +50,10 @@ interface CapabilitySpec {
 }
 
 export interface NodeOptions {
-  identity: Identity;
+  // The node's signing identity: an Ed25519/did:key Identity (default) or a
+  // did:pkh account — for a node whose protocol identity IS its on-chain payout
+  // address (an agent then derives the payee address from the DID, no ext.payTo).
+  identity: Identity | PkhIdentity;
   port: number;
   capabilities: Record<string, CapabilitySpec>;
   rail?: PayeeRail;
@@ -79,6 +83,10 @@ export interface NodeOptions {
 
 export function createNode(opts: NodeOptions) {
   const { identity, port } = opts;
+  // A unified signer: a did:pkh identity signs with its secp256k1 key; an
+  // Ed25519 Identity signs with its KeyObject. Used for the Manifest + receipts.
+  const isPkh = "suite" in identity && identity.suite === "pkh";
+  const signer: Identity | Signer = isPkh ? pkhSigner(identity) : (identity as Identity);
   const host = opts.host ?? "127.0.0.1";
   const baseUrl = opts.publicUrl ?? `http://${host}:${port}`;
   const nonces: NonceChecker = opts.nonceStore ?? new NonceStore();
@@ -116,7 +124,7 @@ export function createNode(opts: NodeOptions) {
     ...(opts.payTo ? { ext: { payTo: opts.payTo } } : {}),
   };
   // A node signs its own Manifest so it is verifiable wherever it is hosted.
-  const manifest: Manifest = signManifest(unsignedManifest, identity);
+  const manifest: Manifest = signManifest(unsignedManifest, signer);
 
   function sendReceipt(
     res: ServerResponse,
@@ -141,7 +149,7 @@ export function createNode(opts: NodeOptions) {
           issued_by: identity.did,
         },
       },
-      identity.privateKey,
+      isSigner(signer) ? signer : signer.privateKey,
     );
     sendJson(res, 200, receipt);
   }

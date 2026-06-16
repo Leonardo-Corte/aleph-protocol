@@ -11,7 +11,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { test, before, after } from "node:test";
 import { invoke, compose } from "@aleph/client";
-import { generateIdentity } from "@aleph/core";
+import { generateIdentity, pkhIdentityFromPrivateKey } from "@aleph/core";
 import { createNode } from "@aleph/node";
 import {
   EvmSettlementRail,
@@ -20,7 +20,15 @@ import {
   evmPayeeRail,
   type EvmRailUnit,
 } from "@aleph/settle-evm";
-import { createWalletClient, createPublicClient, http, parseUnits, type Address, type Hex } from "viem";
+import {
+  createWalletClient,
+  createPublicClient,
+  http,
+  parseUnits,
+  hexToBytes,
+  type Address,
+  type Hex,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { mockUsdcAbi, mockUsdcBytecode } from "../fixtures/mock-usdc.ts";
@@ -168,6 +176,90 @@ test("agent pays a TS node ON-CHAIN through invoke (+compose)", { skip: !hasAnvi
     assert.equal(composed.receipts.length, 2);
     const afterCompose = await balance(pub, token, payeeAcct.address);
     assert.equal(afterCompose - after, parseUnits("10", 6)); // two more paid steps
+  } finally {
+    await node.close();
+  }
+});
+
+test("a did:pkh node is paid at its DID address — no trusted ext.payTo", { skip: !hasAnvil }, async () => {
+  const payerAcct = privateKeyToAccount(PAYER_KEY);
+  const payeeAcct = privateKeyToAccount(PAYEE_KEY);
+  const pub = createPublicClient({ chain: foundry, transport: http(RPC) });
+  const wallet = createWalletClient({ account: payerAcct, chain: foundry, transport: http(RPC) });
+
+  const tokenTx = await wallet.deployContract({
+    abi: mockUsdcAbi,
+    bytecode: mockUsdcBytecode,
+    account: payerAcct,
+    chain: foundry,
+  });
+  const token = (await pub.waitForTransactionReceipt({ hash: tokenTx })).contractAddress!;
+  const escrow = await deployEscrow({ chain: foundry, rpcUrl: RPC, privateKey: PAYER_KEY, token });
+  await wallet.writeContract({
+    address: token,
+    abi: mockUsdcAbi,
+    functionName: "mint",
+    args: [payerAcct.address, parseUnits("1000", 6)],
+    account: payerAcct,
+    chain: foundry,
+  });
+
+  // The node's IDENTITY is its payout account: did:pkh:eip155:<chain>:<payeeAddr>.
+  // It signs its Manifest with the EVM key — and the agent derives the payout
+  // address from the DID, so there is NO trusted ext.payTo assertion.
+  const nodePkh = pkhIdentityFromPrivateKey(hexToBytes(PAYEE_KEY), foundry.id);
+  assert.equal(nodePkh.address, payeeAcct.address.toLowerCase());
+
+  const payerRail = evmPayerRail(
+    new EvmSettlementRail({
+      chain: foundry,
+      rpcUrl: RPC,
+      escrowAddress: escrow,
+      tokenAddress: token,
+      privateKey: PAYER_KEY,
+    }),
+    { decimals: 6, chainId: foundry.id, escrowAddress: escrow },
+  );
+  const payeeRail = evmPayeeRail(
+    new EvmSettlementRail({
+      chain: foundry,
+      rpcUrl: RPC,
+      escrowAddress: escrow,
+      tokenAddress: token,
+      privateKey: PAYEE_KEY,
+    }),
+    { decimals: 6, payeeAddress: payeeAcct.address },
+  );
+
+  const node = createNode({
+    identity: nodePkh, // did:pkh — the node signs as its EVM account
+    port: 4813,
+    rail: payeeRail,
+    capabilities: {
+      "data.geocode": { priceEur: 3, handler: () => ({ output: { name: "Rome", lat: 41.9, lon: 12.5 } }) },
+    },
+  });
+  await node.listen();
+  try {
+    const agent = generateIdentity();
+    const before = await balance(pub, token, payeeAcct.address);
+
+    // NOTE: no payeeAddress passed — the agent derives it from the node's did:pkh.
+    const { outcome, settlement } = await invoke({
+      nodeDid: nodePkh.did,
+      endpoint: node.url + "/aleph",
+      capability: "data.geocode",
+      input: { place: "Rome" },
+      agent,
+      rail: payerRail,
+      payEur: 3,
+    });
+    assert.equal(outcome, "success");
+    assert.ok(settlement);
+    assert.equal(settlement.status, "released");
+
+    const after = await balance(pub, token, payeeAcct.address);
+    assert.equal(after - before, parseUnits("3", 6)); // paid to the DID's address
   } finally {
     await node.close();
   }
