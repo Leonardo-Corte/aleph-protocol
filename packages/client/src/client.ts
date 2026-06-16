@@ -9,7 +9,7 @@ import type { Grant } from "@aleph/core";
 import { verifyManifest, type Manifest, type Capability } from "@aleph/core";
 import { validateSchema, type JsonSchema } from "@aleph/core";
 import { createEnvelope, verifyEnvelope, type Envelope } from "@aleph/core";
-import { verifySettlement, type SettlementRail, type SettlementRecord } from "@aleph/core";
+import { verifySettlement, type PayerRail, type EscrowRef, type SettlementRecord } from "@aleph/core";
 import { createAttestation, computeTrust, type Attestation } from "@aleph/core";
 
 // Trace correlation: the agent stamps a trace id on its outbound calls so one
@@ -121,18 +121,24 @@ export async function invoke(opts: {
   input: Record<string, unknown>;
   grant?: Grant;
   agent: Identity;
-  rail?: SettlementRail;
+  rail?: PayerRail;
   payEur?: number;
   prev?: string[];
   trace?: string; // correlation id propagated to the node (and onward)
 }): Promise<{ result: unknown; outcome: unknown; receipt: Envelope; settlement?: SettlementRecord }> {
-  // PAY — lock funds in escrow before invoking (pay-on-delivery).
-  let payment: { rail: string; escrow: string; amount: number } | undefined;
+  // PAY (lock) — the payer locks funds in escrow BEFORE invoking. On-chain this
+  // is the agent's own lock tx; the node cannot touch it.
+  let payment: EscrowRef | undefined;
   if (opts.payEur && opts.payEur > 0) {
     if (!opts.rail) throw new Error("payEur set but no rail provided");
-    const lock = opts.rail.lock(opts.agent.did, opts.nodeDid, opts.payEur, "pay-" + randomUUID());
+    const lock = await opts.rail.lockEscrow({
+      payer: opts.agent.did,
+      payee: opts.nodeDid,
+      amount: opts.payEur,
+      invokeRef: "pay-" + randomUUID(),
+    });
     if (!lock.ok) throw new Error("payment lock failed: " + lock.reason);
-    payment = { rail: opts.rail.did, escrow: lock.escrow.id, amount: opts.payEur };
+    payment = lock.ref;
   }
 
   const env = createEnvelope(
@@ -157,13 +163,21 @@ export async function invoke(opts: {
   });
   const receipt = (await res.json()) as Envelope;
 
-  // PROVE — the agent does not trust the result on faith; it verifies.
+  // PROVE — the agent does not trust the result on faith; it verifies the receipt
+  // BEFORE paying out.
   const v = verifyEnvelope(receipt);
   if (!v.ok) throw new Error("receipt signature invalid: " + v.reason);
   if (receipt.from !== opts.nodeDid) throw new Error("receipt not from the expected node");
 
-  const settlement = (receipt.body.settlement as SettlementRecord | null) ?? undefined;
-  if (settlement) {
+  // PAY (settle) — only now does the payer release: pay on VERIFIED delivery.
+  // On failure (or no delivery), refund instead. This is the payer-release model
+  // AlephEscrow enforces — a node can never take funds it didn't earn.
+  let settlement: SettlementRecord | undefined;
+  if (payment && opts.rail) {
+    settlement =
+      receipt.body.outcome === "success"
+        ? await opts.rail.releaseEscrow(payment)
+        : await opts.rail.refundEscrow(payment);
     const sv = verifySettlement(settlement);
     if (!sv.ok) throw new Error("settlement invalid: " + sv.reason);
   }

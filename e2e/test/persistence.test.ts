@@ -112,9 +112,13 @@ test("registry, reputation, settlements, and nonces survive a restart (SQLite)",
       assert.equal(rep.trust.count, 1, "reputation survived restart");
       assert.equal(rep.trust.score, 1);
 
-      // the settlement history survived
-      const rec = await nodeStore2.settlements.get(settlement!.escrowId);
-      assert.ok(rec, "settlement record survived restart");
+      // the backing settlement survived — it is persisted INSIDE the attestation
+      // (payer-release: the agent settled, and the node stores the att that
+      // references the released settlement).
+      assert.ok(settlement, "agent received a released settlement");
+      const rec = rep.attestations[0]?.settlement;
+      assert.ok(rec, "attestation (with its settlement) survived restart");
+      assert.equal(rec.escrowId, settlement.escrowId);
       assert.equal(rec.status, "released");
     } finally {
       await node2.close();

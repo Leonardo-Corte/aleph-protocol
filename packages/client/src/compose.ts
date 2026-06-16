@@ -6,7 +6,7 @@
 import type { Identity } from "@aleph/core";
 import type { Grant } from "@aleph/core";
 import type { Envelope } from "@aleph/core";
-import type { SettlementRail } from "@aleph/core";
+import type { PayerRail } from "@aleph/core";
 import { linkTo, verifyReceiptChain, type ChainCheck } from "@aleph/core";
 import { invoke } from "./client";
 
@@ -32,7 +32,7 @@ export interface Composition {
 // receipt to the previous one. The returned chain is independently auditable.
 export async function compose(opts: {
   agent: Identity;
-  rail?: SettlementRail;
+  rail?: PayerRail;
   initial: unknown;
   steps: Step[];
 }): Promise<Composition> {

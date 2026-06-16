@@ -18,5 +18,6 @@ export * from "./errors";
 export * from "./resolver";
 export * from "./vocabulary";
 export * from "./settle/rail";
+export * from "./settle/payments";
 export * from "./trust/attest";
 export * from "./trust/chain";

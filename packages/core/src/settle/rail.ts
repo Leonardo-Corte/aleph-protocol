@@ -9,6 +9,7 @@
 
 import { generateIdentity, type Identity } from "../identity";
 import { DOMAIN, signEd25519, verifyByDid } from "../signing";
+import type { EscrowRef, LockParams, LockResult, PayerRail, PayeeRail } from "./payments";
 
 export type EscrowStatus = "locked" | "released" | "refunded";
 
@@ -34,7 +35,7 @@ export interface SettlementRecord {
   sig: string;
 }
 
-export class SettlementRail {
+export class SettlementRail implements PayerRail, PayeeRail {
   identity: Identity;
   private balances: Map<string, number>;
   private escrows: Map<string, Escrow>;
@@ -51,8 +52,45 @@ export class SettlementRail {
     return this.identity.did;
   }
 
+  // PayerRail.id — the rail's identifier (its DID for the reference rail).
+  get id(): string {
+    return this.identity.did;
+  }
+
   balanceOf(did: string): number {
     return this.balances.get(did) ?? 0;
+  }
+
+  // --- PayerRail / PayeeRail (the injectable settlement seam) -----------------
+  // The reference rail is a single shared object, so payer and payee use the
+  // same instance; these just adapt the sync ledger to the async interface.
+
+  lockEscrow(p: LockParams): Promise<LockResult> {
+    const r = this.lock(p.payer, p.payee, p.amount, p.invokeRef);
+    if (!r.ok) return Promise.resolve({ ok: false, reason: r.reason });
+    return Promise.resolve({ ok: true, ref: { rail: this.did, escrowId: r.escrow.id, amount: p.amount } });
+  }
+
+  releaseEscrow(ref: EscrowRef): Promise<SettlementRecord> {
+    return Promise.resolve(this.release(ref.escrowId));
+  }
+
+  refundEscrow(ref: EscrowRef): Promise<SettlementRecord> {
+    return Promise.resolve(this.refund(ref.escrowId));
+  }
+
+  verifyLock(
+    ref: EscrowRef,
+    expect: { payee: string; minAmount: number; payer?: string },
+  ): Promise<{ ok: boolean; reason?: string }> {
+    const e = this.get(ref.escrowId);
+    if (e?.status !== "locked") return Promise.resolve({ ok: false, reason: "escrow missing or not locked" });
+    if (expect.payer !== undefined && e.payer !== expect.payer) {
+      return Promise.resolve({ ok: false, reason: "escrow payer mismatch" });
+    }
+    if (e.payee !== expect.payee) return Promise.resolve({ ok: false, reason: "escrow payee mismatch" });
+    if (e.amount < expect.minAmount) return Promise.resolve({ ok: false, reason: "escrow below price" });
+    return Promise.resolve({ ok: true });
   }
 
   // Fiat on-ramp. Crediting real value is the honestly-open reserve boundary

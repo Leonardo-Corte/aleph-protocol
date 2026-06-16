@@ -8,7 +8,7 @@ import http from "node:http";
 import type { ServerResponse } from "node:http";
 import type { Identity, NonceChecker } from "@aleph/core";
 import type { Manifest } from "@aleph/core";
-import type { SettlementRail, SettlementRecord } from "@aleph/core";
+import type { PayeeRail, EscrowRef, SettlementRecord } from "@aleph/core";
 import { createEnvelope, type Envelope } from "@aleph/core";
 import { NonceStore, verifyReceived } from "@aleph/core";
 import { verifyGrant, type Grant } from "@aleph/core";
@@ -52,7 +52,7 @@ export interface NodeOptions {
   identity: Identity;
   port: number;
   capabilities: Record<string, CapabilitySpec>;
-  rail?: SettlementRail;
+  rail?: PayeeRail;
   // Storage is pluggable: pass these (SQLite/Postgres) to persist a node's
   // reputation, nonces, and settlement history; all default to in-memory.
   reputationStore?: ReputationStore;
@@ -89,7 +89,6 @@ export function createNode(opts: NodeOptions) {
   // it. Trust is computed by the consumer from these raw facts — the node only
   // stores and serves them; it cannot mint its own score. Defaults to in-memory.
   const reputation: ReputationStore = opts.reputationStore ?? new InMemoryReputationStore();
-  const settlements: SettlementStore | undefined = opts.settlementStore;
 
   const unsignedManifest: Omit<Manifest, "sig"> = {
     v: "aleph/0.1",
@@ -317,56 +316,43 @@ export function createNode(opts: NodeOptions) {
             return;
           }
 
-          // 5. payment escrow (for priced capabilities)
+          // 5. payment escrow (for priced capabilities). The node only VERIFIES
+          // the lock — it cannot move funds. The payer releases after verifying
+          // the receipt (payer-release; AlephEscrow enforces this on-chain).
           const price = cap.priceEur ?? 0;
-          let escrowId: string | undefined;
           if (price > 0) {
             if (!opts.rail) {
               reject(res, env, err("INTERNAL", "node priced but has no rail"));
               return;
             }
-            const payment = env.body.payment as { escrow?: string } | undefined;
-            if (!payment?.escrow) {
+            const payment = env.body.payment as EscrowRef | undefined;
+            if (!payment?.escrowId) {
               reject(res, env, err("PAYMENT_REQUIRED", "payment escrow required"));
               return;
             }
-            const e = opts.rail.get(payment.escrow);
-            if (e?.status !== "locked") {
-              reject(res, env, err("SETTLE_INVALID", "escrow missing or not locked"));
+            const v = await opts.rail.verifyLock(payment, {
+              payee: identity.did,
+              minAmount: price,
+              payer: env.from,
+            });
+            if (!v.ok) {
+              reject(res, env, err("SETTLE_INVALID", v.reason ?? "escrow verification failed"));
               return;
             }
-            if (e.payer !== env.from || e.payee !== identity.did) {
-              reject(res, env, err("SETTLE_INVALID", "escrow parties mismatch"));
-              return;
-            }
-            if (e.amount < price) {
-              reject(res, env, err("INSUFFICIENT_FUNDS", "escrow below price"));
-              return;
-            }
-            escrowId = payment.escrow;
           }
 
-          // 6. act — settle atomically with delivery; refund on failure.
-          // Each produced settlement is recorded to the durable settlement
-          // history (forward-compatible with the on-chain rail).
+          // 6. act — deliver the signed RECEIPT. Settlement (release) is the
+          // PAYER's job, on verified delivery; the node never holds the funds.
           try {
             const { output } = cap.handler(input);
-            const settlement = escrowId && opts.rail ? opts.rail.release(escrowId) : undefined;
-            if (settlement) await settlements?.record(settlement);
             invokes.inc({ outcome: "success" });
-            if (settlement)
-              metrics.counter("aleph_settlements_total", "settlements by status").inc({ status: "released" });
             reqLog.info("invoke", { capability: capName, from: env.from, outcome: "success" });
-            sendReceipt(res, env, "success", output, settlement);
+            sendReceipt(res, env, "success", output);
             return;
           } catch (e) {
-            const refund = escrowId && opts.rail ? opts.rail.refund(escrowId) : undefined;
-            if (refund) await settlements?.record(refund);
             invokes.inc({ outcome: "failure" });
-            if (refund)
-              metrics.counter("aleph_settlements_total", "settlements by status").inc({ status: "refunded" });
             reqLog.warn("invoke", { capability: capName, from: env.from, outcome: "failure" });
-            sendReceipt(res, env, "failure", { error: err("INTERNAL", (e as Error).message) }, refund);
+            sendReceipt(res, env, "failure", { error: err("INTERNAL", (e as Error).message) });
             return;
           }
         }
