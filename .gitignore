@@ -11,3 +11,7 @@ coverage/
 
 # generated API reference (typedoc)
 docs/api/
+
+# Python build artifacts (the SDK's compiled bytecode is generated, not source)
+__pycache__/
+*.pyc
