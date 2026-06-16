@@ -1,0 +1,35 @@
+{
+  "name": "create-aleph-node",
+  "version": "0.2.0",
+  "description": "Scaffold a working Aleph node in seconds: npm create aleph-node@latest my-node",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Leonardo Corte and the Aleph Protocol contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Leonardo-Corte/aleph-protocol.git",
+    "directory": "packages/create-aleph-node"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "create-aleph-node": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "true",
+    "test:coverage": "true",
+    "clean": "rm -rf dist"
+  }
+}

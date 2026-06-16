@@ -93,6 +93,7 @@ packages/                      # pnpm workspace, @aleph/* packages
                fetchReputationSummary/fetchManifest (re-verifies + pins DID)/
                verifyOutput/requiresConfirmation (agent-side safety)/compose.
   mcp/         @aleph/mcp       — Aleph as an MCP server (aleph_resolve/aleph_invoke).
+  create-aleph-node/  create-aleph-node — `npm create aleph-node` scaffolder.
   cli/         @aleph/cli       — THE deployable: keygen/registry/node/healthcheck/
                resolve/invoke; typed env config (config.ts, fail-fast); Postgres
                when DATABASE_URL set; EncryptedFileKeyStore.
@@ -123,7 +124,10 @@ deploy/observability/          — Prometheus alerts.yml + Grafana dashboard.jso
 docs/operators/                — run-your-own-node/registry guide + RELEASE.md
 Dockerfile, docker-compose.yml — one-image-two-roles deployable + local full stack
 scripts/secret-scan.mjs        — dependency-free CI secret scanner
-conformance/python/            — independent Python impl (proves cross-language)
+sdk/python/                    — aleph_protocol Python SDK (canonical/identity/
+                                 envelope/client) — pip-installable, vector-locked
+conformance/python/            — drives the SDK vs the vectors + Python↔TS interop
+docs/QUICKSTART.md             — agent-in-10-lines + run-a-node quickstart
 .github/workflows/            — ci.yml (6 jobs, see §5) + release-images.yml (GHCR on tag)
 ```
 
@@ -155,7 +159,7 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **97 tests (96 pass, 1 skipped = postgres without DATABASE_URL)**,
+Current state: **99 tests (98 pass, 1 skipped = postgres without DATABASE_URL)**,
 all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
 (functions lowered because the Postgres/EVM drivers are CI-only).
 
@@ -170,6 +174,7 @@ All jobs must stay green:
 4. **cross-language conformance (python)**: `pip install cryptography`; runs `conformance/python/run_vectors.py`.
 5. **contracts (foundry) + on-chain rail**: `forge test` + coverage, then the anvil integration test (`e2e/test/settle-evm.test.ts`).
 6. **secret scan**: `node scripts/secret-scan.mjs` (PEM keys, provider tokens, committed .env).
+7. **cross-language conformance (python)** + **cross-language interop (python ↔ ts node)**: the Python SDK reproduces the vectors and a Python-signed INVOKE is answered by a TS node.
 
 `release-images.yml` builds + pushes the container image to GHCR on a **version
 tag** (or manual dispatch). `release.yml` (npm) is **manual** until launch.
@@ -223,7 +228,10 @@ logging w/ secret redaction + trace correlation, Prometheus /metrics, SLOs +
 alerts + Grafana dashboard — DECISIONS D11, spec/OBSERVABILITY.md). · **S9
 (deployment: one-image-two-roles Dockerfile + docker-compose, CLI as deployable
 w/ env-validated config + /healthz, GHCR release + additive-migration rollback,
-CI secret scan, docs/operators guide — DECISIONS D12). Closes Milestone M3.**
+CI secret scan, docs/operators guide — DECISIONS D12). Closes Milestone M3. · **S10
+(SDKs & DX: TS reference publish-ready via changesets/TypeDoc, vector-locked Python
+SDK + cross-language interop test, create-aleph-node scaffolder, quickstart —
+DECISIONS D13).**
 
 **Deferred (tracked):** `did:pkh` (eip155 recovery) → chain tooling, and it now
 also gates binding on-chain settlement *addresses* to attesting *DIDs* (S5.3);
@@ -231,13 +239,16 @@ public-testnet deploy of AlephEscrow → owner's manual step (verified on anvil)
 **staking/slashing** for reputation → a planned AIP (D8); **external core +
 contract audit + bug bounty** → owner's manual gate to MAINNET (D10, ROADMAP §7.5);
 **cloud platform + real HTTPS domain + CD auto-deploy + rollback drill** → owner's
-manual step (image/compose/config/migrations/rollback all ready; D12, ROADMAP §9).
+manual step (image/compose/config/migrations/rollback all ready; D12, ROADMAP §9);
+**npm + PyPI publish + docs-site-at-domain + live testnet** → owner's manual step
+(packages publish-ready, Python pkg + scaffolder + quickstart ready; D13, ROADMAP §10).
 
-**NEXT — Section 10: SDKs & developer experience.** Per ROADMAP §10: publish
-`@aleph/client|node|core|mcp` to npm (changesets), formalize the semver public
-API, TypeDoc reference, and a second-language **Python** SDK that reproduces the
-canonicalization test vectors (proving the spec is language-independent). Begins
-Milestone M4. (M1–M3 complete: S0–S9 done.)
+**NEXT — Section 11: Real capability nodes & the vocabulary.** Per ROADMAP §11:
+expand SEED_VOCABULARY into a curated set (JSON Schemas + risk defaults), build a
+few genuinely useful reference nodes (e.g. data.geocode, compute.inference,
+text.summarize, a priced node), and a flagship MCP-drivable demo (resolve → rank
+by trust → compose → pay on testnet → verifiable receipt chain). (S0–S10 done;
+M1–M3 closed, M4 in progress.)
 
 ---
 

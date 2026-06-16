@@ -782,10 +782,10 @@ CMD ["node", "dist/server.js"]
 - A `create-aleph-node` scaffolder (`npx create-aleph-node`) generating a working node skeleton.
 
 **Acceptance criteria for Section 10.**
-- [ ] `npm i @aleph/client` works; a 10-line example resolves+invokes against the live testnet registry.
-- [ ] The Python SDK reproduces the canonicalization vectors byte-for-byte and can invoke a TS node (cross-language interop proven).
-- [ ] The docs site is live with quickstarts, spec, and API reference.
-- [ ] `npx create-aleph-node` produces a node that registers and serves a capability.
+- [~] `npm i @aleph/client` works; a 10-line example resolves+invokes against the live testnet registry. *(packages publish-ready w/ changesets + provenance; the 10-line example is in docs/QUICKSTART.md; the actual npm publish + live testnet is the owner's gate — D13.)*
+- [x] The Python SDK reproduces the canonicalization vectors byte-for-byte and can invoke a TS node (cross-language interop proven). *(sdk/python/aleph_protocol; run_vectors + interop.test: a Python-signed INVOKE is verified/answered by a TS node.)*
+- [~] The docs site is live with quickstarts, spec, and API reference. *(quickstart + TypeDoc generator + spec/AIP all in-repo; hosting at a domain is the owner's step.)*
+- [x] `npx create-aleph-node` produces a node that registers and serves a capability. *(packages/create-aleph-node; scaffold.test verifies the generated skeleton.)*
 
 **Risks.** Maintaining two SDKs doubles surface; keep the Python one minimal (client + node) and vector-locked to the spec. Docs rot — wire doc examples into CI where possible.
 

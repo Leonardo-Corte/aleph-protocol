@@ -135,6 +135,8 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
 
+  packages/create-aleph-node: {}
+
   packages/mcp:
     dependencies:
       '@aleph/client':

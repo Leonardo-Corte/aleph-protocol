@@ -351,6 +351,36 @@ the project on any one cloud.
 
 ---
 
+## D13 — SDKs & DX: TS reference + a vector-locked Python SDK; scaffolder; docs deferred to a site
+
+**Decision.**
+
+- **TypeScript is the reference SDK** — `@aleph/core|client|node|registry|mcp|cli`
+  (+ internal `transport|store|settle-evm`) published to npm via **changesets**
+  with provenance. The `index.ts` barrels are the semver public surface; a
+  **TypeDoc** reference (`pnpm docs:api`) documents it. `@aleph/transport` is made
+  publishable because published runtimes depend on it.
+- **A second-language SDK proves the spec.** A minimal **Python** package
+  (`aleph-protocol`, `sdk/python`) reproduces canonicalization, did:key identity,
+  domain-separated Ed25519 signing, and the Envelope **byte-for-byte**, and a
+  **cross-language interop** test shows a Python-signed INVOKE is verified and
+  answered by a TypeScript node (no shared code). This is the proof the protocol
+  is language-independent — vector-locked to the spec, kept deliberately minimal
+  (client + node) so two SDKs don't double the surface.
+- **`create-aleph-node`** scaffolds a runnable, registering node in one command —
+  the "edges are smart" principle applied to onboarding.
+- **The docs site at a real domain, and the npm/PyPI publishes, are owner steps.**
+  The repo ships the publish pipeline (changesets + release workflow + provenance),
+  the API-reference generator, the Python package + pyproject, the scaffolder, and
+  a quickstart — so publishing and hosting are mechanical, not design work.
+
+**Why.** Adoption is bounded by how easy it is to build on. The thin waist is for
+machines; the SDKs and scaffolder are for the humans who build the machines. A
+second implementation that is vector-locked to the spec is also the strongest
+guard against the reference quietly *becoming* the spec.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
@@ -375,3 +405,6 @@ the project on any one cloud.
 - 2026-06-15 — D12 decided (deployment: one plain-container deployable via the
   CLI, env-validated config, GHCR release + additive-migration rollback, secret
   scan; cloud/domain/CD as owner's gate; ROADMAP §9). Closes Milestone M3.
+- 2026-06-16 — D13 decided (SDKs & DX: TS reference + changesets/TypeDoc, a
+  vector-locked Python SDK + cross-language interop, create-aleph-node scaffolder,
+  quickstart; npm/PyPI publish + docs site as owner's gate; ROADMAP §10).
