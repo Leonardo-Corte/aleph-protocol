@@ -82,6 +82,27 @@ jobs:
       - name: Python conformance
         run: python conformance/python/run_vectors.py
 
+  interop:
+    name: cross-language interop (python ↔ ts node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cryptography
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      # A Python-signed INVOKE (the aleph_protocol SDK) is verified + answered by
+      # a real TypeScript node — protocol-level interop, no shared code.
+      - name: Cross-language interop
+        run: node --test "e2e/test/interop.test.ts"
+
   postgres:
     name: store contract (postgres)
     runs-on: ubuntu-latest
