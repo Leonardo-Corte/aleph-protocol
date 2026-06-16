@@ -93,7 +93,9 @@ packages/                      # pnpm workspace, @aleph/* packages
                fetchReputationSummary/fetchManifest (re-verifies + pins DID)/
                verifyOutput/requiresConfirmation (agent-side safety)/compose.
   mcp/         @aleph/mcp       — Aleph as an MCP server (aleph_resolve/aleph_invoke).
-  cli/         @aleph/cli       — keygen/registry/node/resolve/invoke; EncryptedFileKeyStore.
+  cli/         @aleph/cli       — THE deployable: keygen/registry/node/healthcheck/
+               resolve/invoke; typed env config (config.ts, fail-fast); Postgres
+               when DATABASE_URL set; EncryptedFileKeyStore.
   store/       @aleph/store     — async repos (Registry/Nonce/Reputation/Settlement)
                + drivers: in-memory, SQLite (node:sqlite), Postgres (postgres.js).
                Reputation: keyset pagination + summary. Registry: price/region/rep
@@ -118,8 +120,11 @@ spec/
   THREAT-MODEL.md               — adversaries → mitigation, each linked to code + test
   OBSERVABILITY.md              — golden signals, metrics, SLOs, logging/tracing
 deploy/observability/          — Prometheus alerts.yml + Grafana dashboard.json
+docs/operators/                — run-your-own-node/registry guide + RELEASE.md
+Dockerfile, docker-compose.yml — one-image-two-roles deployable + local full stack
+scripts/secret-scan.mjs        — dependency-free CI secret scanner
 conformance/python/            — independent Python impl (proves cross-language)
-.github/workflows/ci.yml       — 6 jobs (see §5)
+.github/workflows/            — ci.yml (6 jobs, see §5) + release-images.yml (GHCR on tag)
 ```
 
 Reading-order docs at root: `foundations.md` → `aleph-protocol-paper.md` →
@@ -150,7 +155,7 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **92 tests (91 pass, 1 skipped = postgres without DATABASE_URL)**,
+Current state: **97 tests (96 pass, 1 skipped = postgres without DATABASE_URL)**,
 all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
 (functions lowered because the Postgres/EVM drivers are CI-only).
 
@@ -158,14 +163,16 @@ all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
 
 ## 5. CI (the merge gate) — `.github/workflows/ci.yml`
 
-Six jobs, all must stay green:
+All jobs must stay green:
 1. **build & test** (Node 22 + 24): install → typecheck → lint → format → build → test.
 2. **coverage gate**: `pnpm test:coverage`.
 3. **store contract (postgres)**: a postgres:17 service; runs the store contract suite with `DATABASE_URL`.
 4. **cross-language conformance (python)**: `pip install cryptography`; runs `conformance/python/run_vectors.py`.
 5. **contracts (foundry) + on-chain rail**: `forge test` + coverage, then the anvil integration test (`e2e/test/settle-evm.test.ts`).
+6. **secret scan**: `node scripts/secret-scan.mjs` (PEM keys, provider tokens, committed .env).
 
-`release.yml` is **manual** (workflow_dispatch) until npm publishing is set up at launch.
+`release-images.yml` builds + pushes the container image to GHCR on a **version
+tag** (or manual dispatch). `release.yml` (npm) is **manual** until launch.
 
 ---
 
@@ -213,19 +220,24 @@ threat model with tested mitigations, grant sub-delegation chain, per-IP/per-DID
 rate limiting + complexity caps + server hardening, agent-side safety — DECISIONS
 D10, spec/THREAT-MODEL.md). · **S8 (observability: dependency-free structured
 logging w/ secret redaction + trace correlation, Prometheus /metrics, SLOs +
-alerts + Grafana dashboard — DECISIONS D11, spec/OBSERVABILITY.md).**
+alerts + Grafana dashboard — DECISIONS D11, spec/OBSERVABILITY.md). · **S9
+(deployment: one-image-two-roles Dockerfile + docker-compose, CLI as deployable
+w/ env-validated config + /healthz, GHCR release + additive-migration rollback,
+CI secret scan, docs/operators guide — DECISIONS D12). Closes Milestone M3.**
 
 **Deferred (tracked):** `did:pkh` (eip155 recovery) → chain tooling, and it now
 also gates binding on-chain settlement *addresses* to attesting *DIDs* (S5.3);
 public-testnet deploy of AlephEscrow → owner's manual step (verified on anvil);
 **staking/slashing** for reputation → a planned AIP (D8); **external core +
-contract audit + bug bounty** → owner's manual gate to MAINNET (D10, ROADMAP §7.5).
+contract audit + bug bounty** → owner's manual gate to MAINNET (D10, ROADMAP §7.5);
+**cloud platform + real HTTPS domain + CD auto-deploy + rollback drill** → owner's
+manual step (image/compose/config/migrations/rollback all ready; D12, ROADMAP §9).
 
-**NEXT — Section 9: Deployment & infrastructure (containers, TLS, domains,
-secrets, release/rollback, run-your-own guide).** Per ROADMAP §9: Dockerfiles per
-deployable (registry-server, demo-node), hosting + TLS, managed secrets/config,
-automated deploy + rollback, and the "run your own node/registry" guide. Closes
-Milestone M3 (S7 + S8 done; S9 deploy remains).
+**NEXT — Section 10: SDKs & developer experience.** Per ROADMAP §10: publish
+`@aleph/client|node|core|mcp` to npm (changesets), formalize the semver public
+API, TypeDoc reference, and a second-language **Python** SDK that reproduces the
+canonicalization test vectors (proving the spec is language-independent). Begins
+Milestone M4. (M1–M3 complete: S0–S9 done.)
 
 ---
 

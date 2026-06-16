@@ -320,6 +320,37 @@ heavyweight production exporters when deploying.
 
 ---
 
+## D12 — Deployment: one plain-container deployable (the CLI), env-validated config, owner-gated cloud
+
+**Decision.**
+
+- **One image, two roles.** The `@aleph/cli` is the deployable; `registry` and
+  `node` are the same binary under different commands. A multi-stage `Dockerfile`
+  (slim, non-root, pinned base, `HEALTHCHECK` via the CLI) keeps it a **plain
+  container that runs anywhere** — no platform lock-in. `docker compose up`
+  brings up registry + node + Postgres locally.
+- **Config is env-driven and validated** (`loadServerConfig`, fail-fast):
+  PORT/HOST/PUBLIC_URL/DATABASE_URL/PEERS/ALEPH_LOG_LEVEL. `PUBLIC_URL` lets a
+  service advertise its external (proxy/domain) URL distinct from its bind
+  address. Secrets come from the platform's store; a CI **secret scan** backstops
+  accidental commits.
+- **Release = tagged image to GHCR** (`release-images.yml`), separate from CI.
+  **Migrations are additive/backward-compatible and run before code**, so
+  **rollback is redeploying the previous tag** (no down-migrations without an
+  expand/contract release).
+- **The cloud is the owner's gate.** Provisioning a platform + managed Postgres,
+  a real HTTPS domain/certs (required for `did:web`), the secret store, and CD
+  auto-deploy are deployment-specific owner steps — not exercisable from this
+  repo's CI. Everything here (image, compose, healthcheck, config validation,
+  migrations, rollback, operator guide) makes those steps mechanical.
+
+**Why.** A protocol nobody can reach is not released; a protocol only the author
+can run is not a network. A plain container + a documented run-your-own path is
+what makes Aleph both reachable and genuinely decentralizable, without betting
+the project on any one cloud.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
@@ -341,3 +372,6 @@ heavyweight production exporters when deploying.
 - 2026-06-15 — D11 decided (observability: in-house structured logs + Prometheus
   metrics + trace correlation, swappable for pino/OTel/prom-client; SLOs + alerts
   + dashboard; ROADMAP §8).
+- 2026-06-15 — D12 decided (deployment: one plain-container deployable via the
+  CLI, env-validated config, GHCR release + additive-migration rollback, secret
+  scan; cloud/domain/CD as owner's gate; ROADMAP §9). Closes Milestone M3.

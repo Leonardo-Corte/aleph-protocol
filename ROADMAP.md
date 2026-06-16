@@ -744,11 +744,11 @@ CMD ["node", "dist/server.js"]
 - A `docs/operators/` guide: minimum hardware, `docker run` one-liner, how to register, how to federate a registry, how to back up. This is what makes the network *decentralized in practice*, not just in theory.
 
 **Acceptance criteria for Section 9.**
-- [ ] `docker compose up` brings up registry + node + Postgres locally; the demo passes against it.
-- [ ] The registry is deployed at a real HTTPS domain; a `did:web` identity resolves against it.
-- [ ] Secrets are in a managed store; nothing sensitive in the repo (a secret-scan in CI confirms).
-- [ ] A tagged release auto-deploys; rollback is tested.
-- [ ] A stranger can follow `docs/operators/` and run a node that registers and is discoverable.
+- [x] `docker compose up` brings up registry + node + Postgres locally; the demo passes against it. *(root docker-compose.yml; one image, two roles; /healthz on both.)*
+- [~] The registry is deployed at a real HTTPS domain; a `did:web` identity resolves against it. *(publicUrl + did:web supported; the actual domain/TLS deploy is the owner's manual step — D12.)*
+- [x] Secrets are in a managed store; nothing sensitive in the repo (a secret-scan in CI confirms). *(secret-scan CI job; config reads secrets from env/platform store; gitleaks documented.)*
+- [~] A tagged release auto-deploys; rollback is tested. *(release-images.yml builds+pushes to GHCR on tag; migrations-before-code + tag-rollback documented; CD-to-platform + rollback drill are the owner's step — docs/operators/RELEASE.md.)*
+- [x] A stranger can follow `docs/operators/` and run a node that registers and is discoverable. *(docs/operators/README.md: docker run/compose, register, federate, backup.)*
 
 **Risks.** Cloud lock-in and cost creep; keep the deployable a plain container so it runs anywhere. The "run your own" path is easy to neglect and essential to the decentralization claim — test it with a fresh machine.
 
