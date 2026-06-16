@@ -92,7 +92,9 @@ packages/                      # pnpm workspace, @aleph/* packages
                resolveRanked/invoke/attest/fetchReputation (paginated)/
                fetchReputationSummary/fetchManifest (re-verifies + pins DID)/
                verifyOutput/requiresConfirmation (agent-side safety)/compose.
-  mcp/         @aleph/mcp       — Aleph as an MCP server (aleph_resolve/aleph_invoke).
+  mcp/         @aleph/mcp       — Aleph as an MCP server (buildAlephServer + bin):
+               aleph_resolve (ranked by trust), aleph_invoke (pay via rail, verify
+               output vs schema, risk-gate, attest). Production agent surface.
   create-aleph-node/  create-aleph-node — `npm create aleph-node` scaffolder.
   cli/         @aleph/cli       — THE deployable: keygen/registry/node/healthcheck/
                resolve/invoke; typed env config (config.ts, fail-fast); Postgres
@@ -162,7 +164,7 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **105 tests (104 pass, 1 skipped = postgres without DATABASE_URL)**,
+Current state: **107 tests (106 pass, 1 skipped = postgres without DATABASE_URL)**,
 all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
 (functions lowered because the Postgres/EVM drivers are CI-only).
 
@@ -249,6 +251,14 @@ manual step (image/compose/config/migrations/rollback all ready; D12, ROADMAP §
 (packages publish-ready, Python pkg + scaffolder + quickstart ready; D13, ROADMAP §10);
 **capabilities live on a public testnet + recorded MCP launch demo** → owner's deploy
 step (5 schema'd caps + reference/priced nodes + flagship demo all run+tested; D14, §11).
+
+**Known product gap (next real work, NOT a demo gap):** on-chain PAY is not yet
+threaded through the agent path — `client.invoke`/`compose` (and the node's
+settlement step) are wired to the in-memory reference `SettlementRail`; the EVM
+rail + AlephEscrow are proven at the contract/anvil level (S4) but not pluggable
+into `invoke`. To move REAL value via an agent, make settlement an injectable
+interface across node + client so `EvmSettlementRail` works through invoke/compose.
+The MCP server already takes a rail; it just needs an EVM-capable one.
 
 **NEXT — Section 12: Protocol governance & the v1 spec freeze.** Per ROADMAP §12:
 audit the manifest spec ↔ code in lockstep (every MUST has a test), publish the

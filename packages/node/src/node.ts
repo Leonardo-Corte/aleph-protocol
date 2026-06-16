@@ -42,7 +42,9 @@ interface CapabilitySpec {
   handler: (input: Record<string, unknown>) => { output: Record<string, unknown> };
   requiredGrant?: boolean;
   risk?: "low" | "medium" | "high";
-  schema?: JsonSchema;
+  reversibility?: "reversible" | "irreversible";
+  schema?: JsonSchema; // input schema
+  outputSchema?: JsonSchema; // output schema — advertised so an agent can verify the result
   priceEur?: number;
 }
 
@@ -97,8 +99,9 @@ export function createNode(opts: NodeOptions) {
     capabilities: Object.entries(opts.capabilities).map(([key, cap]) => ({
       key,
       risk: cap.risk ?? "low",
+      ...(cap.reversibility ? { reversibility: cap.reversibility } : {}),
       cost: { unit: "stable", value: String(cap.priceEur ?? 0), model: "per-call" },
-      schema: cap.schema ? { input: cap.schema } : undefined,
+      schema: cap.schema || cap.outputSchema ? { input: cap.schema, output: cap.outputSchema } : undefined,
     })),
     terms: {
       required_grants: Object.entries(opts.capabilities)
