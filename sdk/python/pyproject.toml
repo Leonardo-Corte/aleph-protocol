@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aleph-protocol"
+version = "0.2.0"
+description = "Minimal Python SDK for the Aleph agent-native web protocol (canonicalization, did:key identity, signed Envelopes, client)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+authors = [{ name = "Leonardo Corte and the Aleph Protocol contributors" }]
+keywords = ["aleph", "agent", "protocol", "did", "ed25519", "rfc8785"]
+dependencies = ["cryptography>=42"]
+
+[project.urls]
+Homepage = "https://github.com/Leonardo-Corte/aleph-protocol"
+Repository = "https://github.com/Leonardo-Corte/aleph-protocol"
+
+[tool.hatch.build.targets.wheel]
+packages = ["aleph_protocol"]
