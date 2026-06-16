@@ -1,0 +1,107 @@
+{
+  "version": "aleph/0.1",
+  "capabilities": [
+    {
+      "key": "math.add",
+      "description": "Add two numbers.",
+      "status": "stable",
+      "risk": "low",
+      "reversibility": "reversible",
+      "input": {
+        "type": "object",
+        "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
+        "required": ["a", "b"]
+      },
+      "output": {
+        "type": "object",
+        "properties": { "sum": { "type": "number" } },
+        "required": ["sum"]
+      }
+    },
+    {
+      "key": "data.geocode",
+      "description": "Resolve a place name to geographic coordinates.",
+      "status": "stable",
+      "risk": "low",
+      "reversibility": "reversible",
+      "input": {
+        "type": "object",
+        "properties": { "place": { "type": "string" } },
+        "required": ["place"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "lat": { "type": "number" },
+          "lon": { "type": "number" }
+        },
+        "required": ["name", "lat", "lon"]
+      }
+    },
+    {
+      "key": "text.summarize",
+      "description": "Summarize text into a few sentences (extractive).",
+      "status": "stable",
+      "risk": "low",
+      "reversibility": "reversible",
+      "input": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "maxSentences": { "type": "number" }
+        },
+        "required": ["text"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "summary": { "type": "string" },
+          "sentences": { "type": "number" }
+        },
+        "required": ["summary", "sentences"]
+      }
+    },
+    {
+      "key": "data.fetch",
+      "description": "Fetch a URL and clean it into structured data (title + text).",
+      "status": "proposed",
+      "risk": "medium",
+      "reversibility": "reversible",
+      "input": {
+        "type": "object",
+        "properties": { "url": { "type": "string" } },
+        "required": ["url"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "title": { "type": "string" },
+          "text": { "type": "string" }
+        },
+        "required": ["url", "text"]
+      }
+    },
+    {
+      "key": "compute.inference",
+      "description": "Run model inference on a prompt. Gated behind sane token/cost limits.",
+      "status": "proposed",
+      "risk": "medium",
+      "reversibility": "reversible",
+      "input": {
+        "type": "object",
+        "properties": {
+          "prompt": { "type": "string" },
+          "maxTokens": { "type": "number" }
+        },
+        "required": ["prompt"]
+      },
+      "output": {
+        "type": "object",
+        "properties": { "completion": { "type": "string" } },
+        "required": ["completion"]
+      }
+    }
+  ]
+}

@@ -4,10 +4,20 @@
 // rules, namespacing, validation, and a seed set. New keys are proposed and
 // adopted by consensus (an RFC-like process); this module is where they live.
 
+export type Risk = "low" | "medium" | "high";
+
 export interface VocabularyEntry {
   key: string;
   description: string;
   status: "seed" | "proposed" | "stable";
+  // Optional richness carried by the curated catalog (spec/vocabulary/): the
+  // JSON Schema for input/output, a risk default, and reversibility. A node
+  // advertising the key SHOULD honour these so two nodes offering "the same
+  // thing" really match — schema by identity, not prose.
+  risk?: Risk;
+  reversibility?: "reversible" | "irreversible";
+  input?: unknown; // JSON Schema for the capability input
+  output?: unknown; // JSON Schema for the capability output
 }
 
 // A key is a dotted, lowercase, hierarchical identifier: segment(.segment)+
