@@ -1,0 +1,13 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Aleph Protocol — API reference",
+  "entryPoints": ["packages/core/src/index.ts", "packages/client/src/index.ts"],
+  "tsconfig": "packages/client/tsconfig.json",
+  "out": "docs/api",
+  "readme": "none",
+  "excludeInternal": true,
+  "githubPages": false,
+  "navigationLinks": {
+    "GitHub": "https://github.com/Leonardo-Corte/aleph-protocol"
+  }
+}

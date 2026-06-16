@@ -8,3 +8,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# generated API reference (typedoc)
+docs/api/

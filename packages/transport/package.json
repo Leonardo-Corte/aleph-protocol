@@ -1,10 +1,19 @@
 {
   "name": "@aleph/transport",
   "version": "0.2.0",
-  "private": true,
-  "description": "Internal: tiny node:http helpers shared by the node and registry runtimes.",
+  "description": "Aleph Protocol transport — node:http helpers + observability (logger, metrics, trace) shared by the node and registry runtimes.",
   "type": "module",
   "license": "Apache-2.0",
+  "author": "Leonardo Corte and the Aleph Protocol contributors",
+  "homepage": "https://github.com/Leonardo-Corte/aleph-protocol/tree/main/packages/transport",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Leonardo-Corte/aleph-protocol.git",
+    "directory": "packages/transport"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -17,6 +26,10 @@
     "dist"
   ],
   "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
