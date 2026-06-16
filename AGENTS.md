@@ -76,7 +76,8 @@ packages/                      # pnpm workspace, @aleph/* packages
                replay/NonceChecker, schema, canonical (RFC 8785), signing
                (domain separation, verifyByDid), keystore (scrypt+AES-GCM),
                keyring (rotation), resolver, vocabulary, settle/rail (in-memory
-               reference), trust/attest (pluggable TrustPolicy, diversity-weighted
+               reference) + settle/payments (PayerRail/PayeeRail/EscrowRef seam),
+               trust/attest (pluggable TrustPolicy, diversity-weighted
                default, decay, revocation, computeTrustAsync) + chain, grant
                (sub-delegation chain), complexity caps, errors, hash, base58.
   transport/   @aleph/transport — node:http helpers (readJson 1MB cap, sendJson,
@@ -104,7 +105,9 @@ packages/                      # pnpm workspace, @aleph/* packages
                Reputation: keyset pagination + summary. Registry: price/region/rep
                columns, filtered resolve, monotonic rev + changesSince feed.
   settle-evm/  @aleph/settle-evm — on-chain rail (viem) against AlephEscrow;
-               evmSettlementVerifier (chain-reading trust hook).
+               evmSettlementVerifier (chain-reading trust hook); evmPayerRail/
+               evmPayeeRail/evmPayerRailFromEnv (the PayerRail/PayeeRail seam →
+               real value through client.invoke/compose).
 contracts/                     # Foundry project (gitignored: lib/ out/ cache/)
   src/AlephEscrow.sol           — ERC-20 escrow (lock/release/refund), immutable.
   test/*.t.sol                  — Foundry tests incl. reentrancy.
@@ -164,7 +167,7 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **107 tests (106 pass, 1 skipped = postgres without DATABASE_URL)**,
+Current state: **108 tests (107 pass, 1 skipped = postgres without DATABASE_URL)**,
 all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
 (functions lowered because the Postgres/EVM drivers are CI-only).
 
@@ -252,13 +255,17 @@ manual step (image/compose/config/migrations/rollback all ready; D12, ROADMAP §
 **capabilities live on a public testnet + recorded MCP launch demo** → owner's deploy
 step (5 schema'd caps + reference/priced nodes + flagship demo all run+tested; D14, §11).
 
-**Known product gap (next real work, NOT a demo gap):** on-chain PAY is not yet
-threaded through the agent path — `client.invoke`/`compose` (and the node's
-settlement step) are wired to the in-memory reference `SettlementRail`; the EVM
-rail + AlephEscrow are proven at the contract/anvil level (S4) but not pluggable
-into `invoke`. To move REAL value via an agent, make settlement an injectable
-interface across node + client so `EvmSettlementRail` works through invoke/compose.
-The MCP server already takes a rail; it just needs an EVM-capable one.
+**On-chain PAY through the agent — DONE (was the one real product gap).**
+Settlement is an injectable seam (`@aleph/core`: `PayerRail`/`PayeeRail`/
+`EscrowRef`), so `client.invoke`/`compose` move value over the in-memory rail OR
+the on-chain EVM rail unchanged, via the contract's payer-release flow (agent
+locks → node verifies lock → agent releases on verified receipt). `@aleph/settle-evm`
+adds `evmPayerRail`/`evmPayeeRail`/`evmPayerRailFromEnv`; the `aleph-mcp` bin
+auto-enables it from `ALEPH_EVM_*` env. Nodes advertise `ext.payTo`. Proven on
+anvil (`e2e/test/settle-evm-agent.test.ts`): real ERC-20 moves through invoke +
+compose. Remaining deferrals here: **did:pkh** (bind on-chain address↔DID) and
+**on-chain-record-backed attestation** persistence node-side (verification path
+already exists: `computeTrustAsync` + `evmSettlementVerifier`).
 
 **NEXT — Section 12: Protocol governance & the v1 spec freeze.** Per ROADMAP §12:
 audit the manifest spec ↔ code in lockstep (every MUST has a test), publish the

@@ -70,6 +70,11 @@ export interface NodeOptions {
   // pointer) when behind a proxy/domain. Defaults to http://<host>:<port>.
   host?: string;
   publicUrl?: string;
+  // On-chain payout address advertised in the Manifest (ext.payTo) for priced
+  // nodes settling via the EVM rail — the address an agent locks escrow to.
+  // (DID↔address binding is did:pkh territory, deferred; the signed Manifest
+  // asserts it in the meantime.)
+  payTo?: string;
 }
 
 export function createNode(opts: NodeOptions) {
@@ -108,6 +113,7 @@ export function createNode(opts: NodeOptions) {
         .map(([k]) => k),
     },
     endpoint: [`${baseUrl}/aleph`],
+    ...(opts.payTo ? { ext: { payTo: opts.payTo } } : {}),
   };
   // A node signs its own Manifest so it is verifiable wherever it is hosted.
   const manifest: Manifest = signManifest(unsignedManifest, identity);

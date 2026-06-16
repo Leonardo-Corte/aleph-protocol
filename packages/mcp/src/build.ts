@@ -14,14 +14,29 @@ import {
   verifyOutput,
   requiresConfirmation,
 } from "@aleph/client";
-import { generateIdentity, createGrant, type Identity, type SettlementRail } from "@aleph/core";
+import {
+  generateIdentity,
+  createGrant,
+  type Identity,
+  type PayerRail,
+  type SettlementRecord,
+} from "@aleph/core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+
+// A reference-rail (signed) SettlementRecord — the kind the node's /attest +
+// reputation layer verifies today. On-chain (EVM) records back PAY but their
+// settlement-backed attestation needs the chain-verification path (deferred).
+function isReferenceSettlement(s: unknown): s is SettlementRecord {
+  return !!s && typeof s === "object" && "sig" in s && (s as { rail?: unknown }).rail !== "evm";
+}
 
 export interface AlephServerOptions {
   registryUrl?: string;
   agent?: Identity; // the agent's identity (and, in v0, its own principal)
-  rail?: SettlementRail; // inject to PAY priced nodes; absent ⇒ free nodes only
+  // Inject a payer rail to PAY priced nodes — the in-memory reference rail OR
+  // the on-chain EVM rail (evmPayerRail). Absent ⇒ free nodes only.
+  rail?: PayerRail<unknown>;
 }
 
 function jsonContent(obj: unknown, isError = false) {
@@ -126,6 +141,9 @@ export function buildAlephServer(opts: AlephServerOptions = {}): McpServer {
         },
         agent.privateKey,
       );
+      // the node's on-chain payout address (for the EVM rail) is asserted in its
+      // signed Manifest; the in-memory rail ignores it.
+      const payTo = (manifest.ext as { payTo?: string } | undefined)?.payTo;
       const { result, outcome, receipt, settlement } = await invoke({
         nodeDid: manifest.identity,
         endpoint,
@@ -135,14 +153,22 @@ export function buildAlephServer(opts: AlephServerOptions = {}): McpServer {
         agent,
         rail,
         payEur: price > 0 ? price : undefined,
+        payeeAddress: payTo,
       });
 
       // PROVE: the output is untrusted content — verify it against the schema
       const outputVerified = cap ? verifyOutput(cap, result) : { ok: true };
 
-      // TRUST (write): a settlement-backed attestation, if the agent rated it
+      // TRUST (write): a settlement-backed attestation, if the agent rated it.
+      // Reference-rail settlements are attestable today; on-chain-record-backed
+      // attestation is the chain-verification path (deferred — see note above).
       let attested = false;
-      if (rate !== undefined && outcome === "success" && settlement && manifest.reputation) {
+      if (
+        rate !== undefined &&
+        outcome === "success" &&
+        manifest.reputation &&
+        isReferenceSettlement(settlement)
+      ) {
         await attest({
           agent,
           subjectDid: manifest.identity,

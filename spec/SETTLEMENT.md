@@ -23,6 +23,43 @@ payer.lock(id, payee, amount, invokeRef, deadline)   // funds held by the contra
 - A `SettlementRecord` carries the on-chain `txHash`; `EvmSettlementRail.verify()`
   re-reads the chain and confirms parties/amount/status match — no trusted signer.
 
+## Through the agent path (one seam, two rails)
+
+Settlement is an **injectable interface** (`@aleph/core`: `PayerRail` / `PayeeRail`
+/ `EscrowRef`), so the SAME `client.invoke` and `compose` move value over the
+in-memory reference rail (dev/tests) and the on-chain EVM rail (real value) with
+**no change to agent or node code**. The flow is exactly the contract's
+**payer-release**:
+
+```
+agent.lockEscrow()            // the agent (payer) locks — on-chain, its own tx
+  → INVOKE                    // the node only VERIFIES the lock (it cannot move funds)
+  → node returns RECEIPT      // signed delivery
+  → agent verifies the receipt
+  → agent.releaseEscrow()     // pay on VERIFIED delivery  (or refundEscrow on failure)
+```
+
+- **`@aleph/settle-evm`** provides `evmPayerRail` (approve + lock, release/refund
+  with the agent key) and `evmPayeeRail` (the node reads the chain to verify the
+  lock). `evmPayerRailFromEnv` builds the payer rail from `ALEPH_EVM_RPC /
+  ESCROW / TOKEN / KEY / CHAIN_ID / DECIMALS`.
+- **The MCP server** (`aleph-mcp`) auto-enables the EVM rail when those env vars
+  are set, so a deployed agent pays priced nodes with real value; absent them it
+  serves free nodes only.
+- A node advertises its **on-chain payout address** in its signed Manifest
+  (`ext.payTo`); the agent locks escrow to it. Binding that address to the node's
+  DID is **did:pkh** territory (deferred); until then the Manifest asserts it and
+  the node's `verifyLock` checks the on-chain payee matches its own address.
+- **Protocol unit → token base units** is explicit via `decimals` (the fiat/token
+  boundary). A reference-rail settlement is signed and attestable today; an
+  on-chain-record-backed *attestation* uses the chain-verification path
+  (`computeTrustAsync` + `evmSettlementVerifier`) — wired for verification, with
+  node-side persistence of EVM-record-backed attestations a further step.
+
+Proven end to end on anvil: `e2e/test/settle-evm-agent.test.ts` — an agent pays a
+TypeScript node real ERC-20 through `invoke` and through a 2-step `compose`; the
+tokens actually move and the receipt chain verifies.
+
 ## The honestly-open boundaries
 
 These are declared, not hidden (they mirror the paper's premortem, §8 / §17):

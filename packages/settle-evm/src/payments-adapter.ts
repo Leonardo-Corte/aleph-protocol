@@ -11,7 +11,8 @@
 
 import { randomUUID } from "node:crypto";
 import type { EscrowRef, LockParams, LockResult, PayeeRail, PayerRail } from "@aleph/core";
-import { keccak256, parseUnits, toHex, type Address, type Hex } from "viem";
+import { defineChain, keccak256, parseUnits, toHex, type Address, type Chain, type Hex } from "viem";
+import * as chains from "viem/chains";
 import { EvmSettlementRail, escrowIdFor, type EvmSettlementRecord } from "./rail";
 
 // On-chain escrow status enum (AlephEscrow): None=0, Locked=1, Released=2, Refunded=3.
@@ -67,6 +68,35 @@ export function evmPayerRail(rail: EvmSettlementRail, cfg: EvmRailUnit): PayerRa
       return rail.refund(ref.escrowId as Hex);
     },
   };
+}
+
+// Build an agent payer rail from environment variables, or return undefined if
+// unconfigured (so a host falls back to free-only). A deployed MCP agent sets
+// these to pay priced nodes with real value. The fiat/token decimals boundary
+// is explicit (ALEPH_EVM_DECIMALS).
+export function evmPayerRailFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): PayerRail<EvmSettlementRecord> | undefined {
+  const rpcUrl = env.ALEPH_EVM_RPC;
+  const escrowAddress = env.ALEPH_EVM_ESCROW as Address | undefined;
+  const tokenAddress = env.ALEPH_EVM_TOKEN as Address | undefined;
+  const privateKey = env.ALEPH_EVM_KEY as Hex | undefined;
+  if (!rpcUrl || !escrowAddress || !tokenAddress || !privateKey) return undefined;
+
+  const chainId = Number(env.ALEPH_EVM_CHAIN_ID ?? 84532); // default Base Sepolia
+  const decimals = Number(env.ALEPH_EVM_DECIMALS ?? 6);
+  const known = (Object.values(chains) as Chain[]).find((c) => c.id === chainId);
+  const chain =
+    known ??
+    defineChain({
+      id: chainId,
+      name: `chain-${chainId}`,
+      nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+      rpcUrls: { default: { http: [rpcUrl] } },
+    });
+
+  const rail = new EvmSettlementRail({ chain, rpcUrl, escrowAddress, tokenAddress, privateKey });
+  return evmPayerRail(rail, { decimals, chainId, escrowAddress });
 }
 
 // Node side: verify the agent locked the right amount to THIS node's address for

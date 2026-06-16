@@ -5,7 +5,8 @@
     "paths": {
       "@aleph/core": ["../core/src/index.ts"],
       "@aleph/client": ["../client/src/index.ts"],
-      "@aleph/store": ["../store/src/index.ts"]
+      "@aleph/store": ["../store/src/index.ts"],
+      "@aleph/settle-evm": ["../settle-evm/src/index.ts"]
     }
   },
   "include": ["src"]

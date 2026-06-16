@@ -8,4 +8,4 @@ export {
 } from "./rail";
 export { deployEscrow } from "./deploy";
 export { alephEscrowAbi, alephEscrowBytecode } from "./abi";
-export { evmPayerRail, evmPayeeRail, type EvmRailUnit } from "./payments-adapter";
+export { evmPayerRail, evmPayeeRail, evmPayerRailFromEnv, type EvmRailUnit } from "./payments-adapter";

@@ -413,6 +413,40 @@ network — without scope-creeping into building products.
 
 ---
 
+## D15 — Settlement is one injectable seam; PAY moves real value through the agent path
+
+**Decision.**
+
+- Settlement is an **injectable async interface** in the I/O-free core
+  (`PayerRail` / `PayeeRail` / `EscrowRef`), so `client.invoke` and `compose`
+  move value identically over the **in-memory reference rail** (dev/tests) and
+  the **on-chain EVM rail** (real value) — no change to agent or node code.
+- The flow is the contract's **payer-release**, not a payee-release shortcut: the
+  agent (payer) **locks**, the node only **verifies** the lock (it can never move
+  funds), and the agent **releases on a verified receipt** (or refunds on
+  failure / via the deadline). "Pay on verified delivery." This makes the
+  in-memory rail a faithful model of `AlephEscrow`, not a divergent stub.
+- `PayerRail` is **generic over the settlement-record type**: the EVM rail returns
+  an on-chain record proven by `txHash`. The agent produces it with its *own*
+  rail, so it is authentic by construction — `invoke` no longer re-verifies a
+  node-supplied settlement (the old model let the payee mint it).
+- `@aleph/settle-evm` adds `evmPayerRail` / `evmPayeeRail` / `evmPayerRailFromEnv`;
+  the `aleph-mcp` bin auto-enables the on-chain rail from `ALEPH_EVM_*` env, else
+  serves free nodes. Nodes advertise their payout address in the signed Manifest
+  (`ext.payTo`); protocol-unit → token base units is explicit via `decimals`.
+
+**Deferred (honest):** binding the on-chain payee *address* to the node *DID*
+(**did:pkh**); and node-side persistence of **on-chain-record-backed
+attestations** (the verification path exists — `computeTrustAsync` +
+`evmSettlementVerifier`; reference-rail settlements are attestable today).
+
+**Why.** PAY is the verb that moves money; "an agent can pay a node real value"
+must be true through the ordinary SDK path, not only at the contract level. One
+seam keeps dev ergonomics (in-memory) and production reality (on-chain) on the
+exact same code, so what tests prove is what ships.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
@@ -443,3 +477,6 @@ network — without scope-creeping into building products.
 - 2026-06-16 — D14 decided (capability nodes: schema-bearing vocabulary catalog +
   proposal flow, small/deterministic reference nodes incl. a priced one, flagship
   composition demo; live-testnet + recorded launch demo as owner's gate; §11).
+- 2026-06-16 — D15 decided (settlement seam: PayerRail/PayeeRail injectable,
+  payer-release flow, EVM rail through invoke/compose moving real value, MCP env
+  rail; did:pkh + on-chain-backed attestation persistence deferred).
