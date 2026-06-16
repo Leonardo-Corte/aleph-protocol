@@ -3,6 +3,7 @@
 // stand-in (it just forgets everything on exit).
 
 import type { Manifest, Attestation, SettlementRecord } from "@aleph/core";
+import { settledAmount } from "@aleph/core";
 import type {
   RegistryStore,
   NonceStore,
@@ -161,7 +162,7 @@ export class InMemoryReputationStore implements ReputationStore {
     let newestTs: number | undefined;
     for (const att of list) {
       issuers.add(att.issued_by);
-      totalSettledValue += att.settlement.amount;
+      totalSettledValue += settledAmount(att.settlement);
       oldestTs = oldestTs === undefined ? att.ts : Math.min(oldestTs, att.ts);
       newestTs = newestTs === undefined ? att.ts : Math.max(newestTs, att.ts);
     }

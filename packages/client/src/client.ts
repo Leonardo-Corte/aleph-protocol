@@ -9,9 +9,9 @@ import type { Grant } from "@aleph/core";
 import { verifyManifest, type Manifest, type Capability } from "@aleph/core";
 import { validateSchema, type JsonSchema } from "@aleph/core";
 import { createEnvelope, verifyEnvelope, type Envelope } from "@aleph/core";
-import { type PayerRail, type EscrowRef, type SettlementRecord } from "@aleph/core";
-import { createAttestation, computeTrust, type Attestation } from "@aleph/core";
-import { isDidPkh, parseDidPkh } from "@aleph/core";
+import { type PayerRail, type EscrowRef, type SettlementRecord, type Signer } from "@aleph/core";
+import { createAttestation, computeTrust, type Attestation, type AttestationSettlement } from "@aleph/core";
+import { isDidPkh, parseDidPkh, isSigner } from "@aleph/core";
 
 // Trace correlation: the agent stamps a trace id on its outbound calls so one
 // logical operation is followable across registry and node logs end to end.
@@ -121,7 +121,7 @@ export async function invoke<S = SettlementRecord>(opts: {
   capability: string;
   input: Record<string, unknown>;
   grant?: Grant;
-  agent: Identity;
+  agent: Identity | Signer; // did:key Identity, or a Signer (e.g. a did:pkh agent)
   rail?: PayerRail<S>;
   payEur?: number;
   payeeAddress?: string; // on-chain payout address (from the node's Manifest), for the EVM rail
@@ -162,7 +162,7 @@ export async function invoke<S = SettlementRecord>(opts: {
         prev: opts.prev,
       },
     },
-    opts.agent.privateKey,
+    isSigner(opts.agent) ? opts.agent : opts.agent.privateKey,
   );
   const res = await fetch(opts.endpoint, {
     method: "POST",
@@ -195,10 +195,13 @@ export async function invoke<S = SettlementRecord>(opts: {
 // TRUST (write) — after a settled interaction, attest to the counterparty.
 // The attestation is backed by the settlement, so it cannot be forged for free.
 export async function attest(opts: {
-  agent: Identity;
+  // The attester. A did:key Identity for reference-rail settlements; a did:pkh
+  // Signer (the EVM payer) for on-chain-backed attestations, so the attester's
+  // DID address is the on-chain payer the chain check binds to.
+  agent: Identity | Signer;
   subjectDid: string;
   reputationUrl: string;
-  settlement: SettlementRecord;
+  settlement: AttestationSettlement;
   rating: number;
   claim?: string;
 }): Promise<Attestation> {

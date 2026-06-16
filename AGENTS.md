@@ -72,7 +72,8 @@ act. The user wants real production work and is fine with it taking time.
 ```
 packages/                      # pnpm workspace, @aleph/* packages
   core/        @aleph/core      — the thin waist, I/O-FREE. identity (did:key
-               ed25519+secp256k1, did:web), envelope, grant, manifest (signed),
+               ed25519+secp256k1, did:web, did:pkh/eip155 via secp256k1 recovery),
+               Signer abstraction, envelope, grant, manifest (signed),
                replay/NonceChecker, schema, canonical (RFC 8785), signing
                (domain separation, verifyByDid), keystore (scrypt+AES-GCM),
                keyring (rotation), resolver, vocabulary, settle/rail (in-memory
@@ -167,7 +168,7 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **108 tests (107 pass, 1 skipped = postgres without DATABASE_URL)**,
+Current state: **113 tests (112 pass, 1 skipped = postgres without DATABASE_URL)**,
 all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
 (functions lowered because the Postgres/EVM drivers are CI-only).
 
@@ -261,11 +262,17 @@ Settlement is an injectable seam (`@aleph/core`: `PayerRail`/`PayeeRail`/
 the on-chain EVM rail unchanged, via the contract's payer-release flow (agent
 locks → node verifies lock → agent releases on verified receipt). `@aleph/settle-evm`
 adds `evmPayerRail`/`evmPayeeRail`/`evmPayerRailFromEnv`; the `aleph-mcp` bin
-auto-enables it from `ALEPH_EVM_*` env. Nodes advertise `ext.payTo`. Proven on
-anvil (`e2e/test/settle-evm-agent.test.ts`): real ERC-20 moves through invoke +
-compose. Remaining deferrals here: **did:pkh** (bind on-chain address↔DID) and
-**on-chain-record-backed attestation** persistence node-side (verification path
-already exists: `computeTrustAsync` + `evmSettlementVerifier`).
+auto-enables it from `ALEPH_EVM_*` env. Proven on anvil
+(`e2e/test/settle-evm-agent.test.ts`): real ERC-20 moves through invoke + compose.
+
+**did:pkh — DONE (closes the last two deferrals).** `did:pkh:eip155:<chain>:<addr>`
+is a first-class verifiable identity (secp256k1 recovery in core, no new dep; a
+`Signer` abstraction lets envelopes/manifests/attestations be signed by any
+suite). A did:pkh node's payout address is DERIVED from its DID (no trusted
+ext.payTo). On-chain-backed attestations are verified node-side by
+`verifyAttestationOnChain` (chain read + did:pkh address binding) via
+`evmAttestationVerifier`; reputation accrues from real on-chain value. Tests:
+`pkh.test.ts`, `settle-evm-agent.test.ts` (pkh node), `attest-onchain.test.ts`.
 
 **NEXT — Section 12: Protocol governance & the v1 spec freeze.** Per ROADMAP §12:
 audit the manifest spec ↔ code in lockstep (every MUST has a test), publish the

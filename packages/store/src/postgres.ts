@@ -5,6 +5,7 @@
 // Construct via `await PostgresStores.connect(url)`.
 
 import type { Manifest, Attestation, SettlementRecord } from "@aleph/core";
+import { settledAmount } from "@aleph/core";
 import type {
   RegistryStore,
   NonceStore,
@@ -233,7 +234,7 @@ class PgReputationStore implements ReputationStore {
   async addAttestation(att: Attestation): Promise<boolean> {
     const res = await this.sql`
       INSERT INTO attestations (subject_did, settlement_id, issuer_did, amount, att_ts, attestation)
-      VALUES (${att.subject}, ${att.settlement.escrowId}, ${att.issued_by}, ${att.settlement.amount}, ${att.ts}, ${this.sql.json(att)})
+      VALUES (${att.subject}, ${att.settlement.escrowId}, ${att.issued_by}, ${settledAmount(att.settlement)}, ${att.ts}, ${this.sql.json(att)})
       ON CONFLICT (subject_did, settlement_id) DO NOTHING RETURNING 1`;
     return res.length > 0;
   }

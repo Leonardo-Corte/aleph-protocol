@@ -41,9 +41,11 @@ see `SETTLEMENT.md`).
   (see `REPUTATION.md`, decision D8).
 - **The fiat on-ramp** cannot be proven on-chain — an honestly-open boundary
   (`SETTLEMENT.md`).
-- **did:pkh** (binding an on-chain address to a DID) is deferred; until it lands,
-  EVM-backed attestations are verified for settlement authenticity but DID-level
-  issuer-matching stays on the reference rail.
+- **did:pkh** binds an on-chain address to a DID (the DID *is* the address):
+  a node's payout address is derived from its DID, and EVM-backed attestations
+  verify both the on-chain escrow (chain read) AND the did:pkh address binding
+  (attester DID == payer, subject DID == payee). Verified via secp256k1 recovery
+  in `@aleph/core` (no new dependency).
 
 ## The external audit (gate to mainnet)
 

@@ -447,6 +447,40 @@ exact same code, so what tests prove is what ships.
 
 ---
 
+## D16 — did:pkh: the on-chain identity binding (payout + on-chain-backed reputation)
+
+**Decision.** Ship `did:pkh:eip155:<chainId>:<address>` as a first-class,
+verifiable identity method — closing the D3 deferral. The DID **is** an Ethereum
+account, so "who I am" == "where I get paid", with no trusted self-assertion.
+
+- **Verification by recovery, in core, no new dependency.** A did:pkh signature
+  is a recoverable secp256k1 signature over the Aleph domain-separated message;
+  verification recovers the public key, derives the address (keccak256), and
+  compares it to the DID. `@aleph/core` already carries `@noble/curves` +
+  `@noble/hashes`, so this needs no viem. A `Signer` abstraction (D6's "abstract
+  the suite behind the verification-method type") lets envelopes, manifests, and
+  attestations be signed by Ed25519, secp256k1 did:key, or did:pkh uniformly.
+- **Payout binding.** A did:pkh node's payout address is **derived from its DID**;
+  `client.invoke` no longer needs a trusted `ext.payTo` for such nodes.
+- **On-chain-backed reputation.** An attestation's settlement may be the on-chain
+  record. It is verified by `verifyAttestationOnChain`: signature + rating + the
+  **did:pkh address binding** (attester == payer, subject == payee) + a **chain
+  read**. The node's `/attest` takes an injectable verifier
+  (`evmAttestationVerifier`); sync `computeTrust` ignores on-chain settlements by
+  design (safe-by-default — they cannot be verified without the chain), and
+  `computeTrustAsync` counts them via the verifier. A fabricated on-chain
+  reference is rejected by reading the chain.
+
+**Why.** If money moves on-chain, a node's protocol identity and its payout
+identity must be the same cryptographic fact, and reputation must be able to rest
+on real on-chain value — not only on the in-memory reference rail. This makes the
+"settlement-backed reputation" claim true for actual money.
+
+**Still deferred (honest):** EIP-55 checksum addresses (we compare lowercased);
+non-EVM `did:pkh` namespaces; and `did:web`-style rotation for pkh keys.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
@@ -480,3 +514,7 @@ exact same code, so what tests prove is what ships.
 - 2026-06-16 — D15 decided (settlement seam: PayerRail/PayeeRail injectable,
   payer-release flow, EVM rail through invoke/compose moving real value, MCP env
   rail; did:pkh + on-chain-backed attestation persistence deferred).
+- 2026-06-16 — D16 decided (did:pkh: on-chain identity binding via secp256k1
+  recovery in core, Signer abstraction, payout address derived from the node DID,
+  and on-chain-backed attestations verified by chain-read + address binding —
+  closes the D3/D15 deferrals; ROADMAP §3.4 / §5 / §4).

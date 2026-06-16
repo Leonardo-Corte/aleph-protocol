@@ -76,9 +76,12 @@ export interface NodeOptions {
   publicUrl?: string;
   // On-chain payout address advertised in the Manifest (ext.payTo) for priced
   // nodes settling via the EVM rail — the address an agent locks escrow to.
-  // (DID↔address binding is did:pkh territory, deferred; the signed Manifest
-  // asserts it in the meantime.)
+  // A did:pkh node needs no payTo: its DID IS its payout address.
   payTo?: string;
+  // How inbound attestations are verified before storage. Default: the sync
+  // reference-rail check. An EVM-aware node passes an async verifier (e.g.
+  // evmAttestationVerifier) that re-reads the chain for on-chain-backed ones.
+  attestationVerifier?: (att: Attestation) => Promise<{ ok: boolean; reason?: string }>;
 }
 
 export function createNode(opts: NodeOptions) {
@@ -102,6 +105,8 @@ export function createNode(opts: NodeOptions) {
   // it. Trust is computed by the consumer from these raw facts — the node only
   // stores and serves them; it cannot mint its own score. Defaults to in-memory.
   const reputation: ReputationStore = opts.reputationStore ?? new InMemoryReputationStore();
+  const verifyAtt =
+    opts.attestationVerifier ?? ((att: Attestation) => Promise.resolve(verifyAttestation(att)));
 
   const unsignedManifest: Omit<Manifest, "sig"> = {
     v: "aleph/0.1",
@@ -251,10 +256,13 @@ export function createNode(opts: NodeOptions) {
           return;
         }
         // Receive an attestation written about this node; store only if it is
-        // backed by a valid, released settlement to this node (anti-Sybil).
+        // backed by a valid, released settlement to this node (anti-Sybil). The
+        // verifier is injectable: the default verifies reference-rail settlements
+        // synchronously; an EVM-aware node passes a verifier that re-reads the
+        // chain for on-chain-backed attestations (and checks the did:pkh binding).
         if (req.method === "POST" && req.url === "/attest") {
           const att = (await readJson(req)) as unknown as Attestation;
-          const av = verifyAttestation(att);
+          const av = await verifyAtt(att);
           if (!av.ok) {
             sendJson(res, 400, { error: err("ATTEST_INVALID", av.reason ?? "invalid") });
             return;

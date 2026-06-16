@@ -74,11 +74,16 @@ chain**, so a **fabricated settlement reference earns zero weight**.
 primitive (over `EvmSettlementRail.verify`). `core` stays I/O-free: the chain
 reader lives in the rail package.
 
-> **Deferred:** binding an on-chain payer/payee *address* to the attesting *DID*
-> (so EVM-backed attestations slot into the DID-level issuer-matching) depends on
-> **did:pkh**, which is deferred (D3). Until then the verifier proves settlement
-> authenticity and DID-level matching stays on the reference rail — flagged, not
-> faked.
+**On-chain-backed attestations (did:pkh).** When the attester and subject are
+**did:pkh** identities (their DID IS their on-chain account), an EVM-settlement-
+backed attestation is verified by `verifyAttestationOnChain`: the signature, the
+rating, the **address binding** (attester DID address == on-chain payer, subject
+DID address == payee), and a **chain read** confirming the escrow is real and
+released. `@aleph/settle-evm`'s `evmAttestationVerifier(rail)` is the verifier a
+node passes to its `/attest` endpoint (and a consumer passes to
+`computeTrustAsync`). A fabricated on-chain reference is rejected by reading the
+chain; reputation accrues from real on-chain value. Sync `computeTrust` ignores
+on-chain settlements by design (they cannot be verified without the chain).
 
 ## Retrieval at scale
 

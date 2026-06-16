@@ -6,6 +6,7 @@
 import { createRequire } from "node:module";
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import type { Manifest, Attestation, SettlementRecord } from "@aleph/core";
+import { settledAmount } from "@aleph/core";
 import type {
   RegistryStore,
   NonceStore,
@@ -281,7 +282,7 @@ class SqliteReputationStore implements ReputationStore {
           att.subject,
           att.settlement.escrowId,
           att.issued_by,
-          att.settlement.amount,
+          settledAmount(att.settlement),
           att.ts,
           JSON.stringify(att),
           Date.now(),

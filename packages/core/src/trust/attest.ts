@@ -9,14 +9,45 @@
 // (diversity-weighted + time-decayed); agents may override every knob.
 
 import { type Identity } from "../identity";
+import { isDidPkh, parseDidPkh } from "../pkh";
 import { verifySettlement, type SettlementRecord } from "../settle/rail";
-import { DOMAIN, signEd25519, verifyByDid } from "../signing";
+import { DOMAIN, signEd25519, isSigner, verifyByDid, type Signer } from "../signing";
+
+// An on-chain settlement (e.g. AlephEscrow via the EVM rail). Structurally
+// described here so core stays viem-free; the EVM rail's record satisfies it.
+// Its authenticity is proven by RE-READING THE CHAIN (async), not a signature,
+// and its payer/payee are blockchain ADDRESSES — bound to the attester/subject
+// DIDs only when those are did:pkh (the on-chain identity).
+export interface OnChainSettlementRef {
+  rail: "evm";
+  escrowId: string;
+  payer: string; // 0x address
+  payee: string; // 0x address
+  amount: string; // base units (decimal string)
+  status: "released" | "refunded";
+  chainId: number;
+  escrowAddress: string;
+  txHash: string;
+  ts: number;
+}
+
+export type AttestationSettlement = SettlementRecord | OnChainSettlementRef;
+
+export function isOnChainSettlement(s: AttestationSettlement): s is OnChainSettlementRef {
+  return (s as OnChainSettlementRef).rail === "evm";
+}
+
+// The settled value as a number, regardless of rail (the reference rail stores a
+// number; the on-chain rail a base-units decimal string).
+export function settledAmount(s: AttestationSettlement): number {
+  return typeof s.amount === "number" ? s.amount : Number(s.amount);
+}
 
 export interface Attestation {
   v: string;
   subject: string; // the party being attested about (the payee)
   issued_by: string; // the attester (the payer)
-  settlement: SettlementRecord; // the settlement that backs and pays for this attestation
+  settlement: AttestationSettlement; // the settlement that backs and pays for this attestation
   rating: number; // [0,1] — 0 is a fully negative attestation, 1 a fully positive one
   claim?: string;
   ts: number;
@@ -24,10 +55,10 @@ export interface Attestation {
 }
 
 export function createAttestation(
-  issuer: Identity,
+  issuer: Identity | Signer,
   params: {
     subject: string;
-    settlement: SettlementRecord;
+    settlement: AttestationSettlement;
     rating: number;
     claim?: string;
     ts?: number; // override the timestamp (e.g. importing history); default now
@@ -47,7 +78,9 @@ export function createAttestation(
     claim: params.claim,
     ts: params.ts ?? Date.now(),
   };
-  const sig = signEd25519(DOMAIN.attestation, base, issuer.privateKey);
+  const sig = isSigner(issuer)
+    ? issuer.sign(DOMAIN.attestation, base)
+    : signEd25519(DOMAIN.attestation, base, issuer.privateKey);
   return { ...base, sig };
 }
 
@@ -69,6 +102,12 @@ export function verifyAttestation(att: Attestation): { ok: boolean; reason?: str
 
   const s = att.settlement;
   if (!s) return { ok: false, reason: "no settlement backing" };
+  // On-chain settlements cannot be verified synchronously — their authenticity
+  // is the chain itself. Reject here (so sync computeTrust never counts an
+  // unverified on-chain ref) and verify them via verifyAttestationOnChain.
+  if (isOnChainSettlement(s)) {
+    return { ok: false, reason: "on-chain settlement requires async chain verification" };
+  }
   const sv = verifySettlement(s);
   if (!sv.ok) return { ok: false, reason: "settlement invalid: " + sv.reason };
   if (s.status !== "released") return { ok: false, reason: "settlement not released" };
@@ -76,6 +115,53 @@ export function verifyAttestation(att: Attestation): { ok: boolean; reason?: str
   if (s.payee !== att.subject) return { ok: false, reason: "subject is not the payee" };
   if (s.amount <= 0) return { ok: false, reason: "zero-value settlement" };
   return { ok: true };
+}
+
+// Verify an on-chain-backed attestation: signature + rating + the did:pkh
+// address binding (the attester's DID address IS the escrow payer; the subject's
+// IS the payee), then RE-READ THE CHAIN via the injected verifier to confirm the
+// escrow is real and released. A reference-rail attestation falls back to the
+// sync check. This is the path the node's /attest and computeTrustAsync use when
+// settlement is on-chain — a fabricated reference is rejected by reading the chain.
+export async function verifyAttestationOnChain(
+  att: Attestation,
+  readChain: (s: OnChainSettlementRef) => Promise<{ ok: boolean; reason?: string }>,
+): Promise<{ ok: boolean; reason?: string }> {
+  const s = att.settlement;
+  if (!isOnChainSettlement(s)) return verifyAttestation(att);
+
+  const { sig, ...base } = att;
+  try {
+    if (!verifyByDid(att.issued_by, DOMAIN.attestation, base, sig)) {
+      return { ok: false, reason: "bad attestation signature" };
+    }
+  } catch (e) {
+    return { ok: false, reason: (e as Error).message };
+  }
+  if (!(att.rating >= 0 && att.rating <= 1)) return { ok: false, reason: "rating out of range" };
+  if (s.status !== "released") return { ok: false, reason: "settlement not released" };
+  if (!(Number(s.amount) > 0)) return { ok: false, reason: "zero-value settlement" };
+
+  // DID↔address binding (needs did:pkh on both sides): "who I am" == "who paid".
+  try {
+    if (parseDidPkh(att.issued_by).address !== s.payer.toLowerCase()) {
+      return { ok: false, reason: "attester DID address is not the on-chain payer" };
+    }
+    if (parseDidPkh(att.subject).address !== s.payee.toLowerCase()) {
+      return { ok: false, reason: "subject DID address is not the on-chain payee" };
+    }
+  } catch {
+    return { ok: false, reason: "on-chain attestation requires did:pkh attester and subject" };
+  }
+
+  // Finally, the chain itself: the escrow exists, released, with these parties.
+  return readChain(s);
+}
+
+// True iff the DID can be bound to an on-chain address (did:pkh). Exported so
+// callers can require it before an on-chain attestation.
+export function bindsOnChain(did: string): boolean {
+  return isDidPkh(did);
 }
 
 // --- Revocation --------------------------------------------------------------
@@ -236,15 +322,16 @@ function score(verified: Attestation[], policy: TrustPolicy, revocations: Revoca
     seen.add(id);
     const age = Math.max(0, now - att.ts);
     const d = Math.min(1, Math.max(0, decay(age)));
-    const dv = att.settlement.amount * d;
+    const amount = settledAmount(att.settlement);
+    const dv = amount * d;
     const g = byIssuer.get(att.issued_by) ?? { dvalue: 0, weightedRating: 0, rawValue: 0, n: 0 };
     g.dvalue += dv;
     g.weightedRating += att.rating * dv;
-    g.rawValue += att.settlement.amount;
+    g.rawValue += amount;
     g.n += 1;
     byIssuer.set(att.issued_by, g);
     count++;
-    totalValue += att.settlement.amount;
+    totalValue += amount;
   }
 
   let weight = 0;

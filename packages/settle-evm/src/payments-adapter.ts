@@ -10,7 +10,16 @@
 // asserts its payout address, which the agent passes as `payeeAddress`.
 
 import { randomUUID } from "node:crypto";
-import type { EscrowRef, LockParams, LockResult, PayeeRail, PayerRail } from "@aleph/core";
+import type {
+  Attestation,
+  EscrowRef,
+  LockParams,
+  LockResult,
+  OnChainSettlementRef,
+  PayeeRail,
+  PayerRail,
+} from "@aleph/core";
+import { verifyAttestation, verifyAttestationOnChain, isOnChainSettlement } from "@aleph/core";
 import { defineChain, keccak256, parseUnits, toHex, type Address, type Chain, type Hex } from "viem";
 import * as chains from "viem/chains";
 import { EvmSettlementRail, escrowIdFor, type EvmSettlementRecord } from "./rail";
@@ -67,6 +76,22 @@ export function evmPayerRail(rail: EvmSettlementRail, cfg: EvmRailUnit): PayerRa
     refundEscrow(ref: EscrowRef): Promise<EvmSettlementRecord> {
       return rail.refund(ref.escrowId as Hex);
     },
+  };
+}
+
+// An attestation verifier for a node's /attest endpoint: reference-rail
+// attestations verify synchronously; on-chain-backed ones re-read the chain
+// (the escrow exists, released, with the bound parties) AND check the did:pkh
+// address binding — so a fabricated on-chain reference, or one whose attester/
+// subject DIDs don't match the escrow's payer/payee addresses, is rejected.
+export function evmAttestationVerifier(
+  rail: EvmSettlementRail,
+): (att: Attestation) => Promise<{ ok: boolean; reason?: string }> {
+  return (att) => {
+    if (!isOnChainSettlement(att.settlement)) return Promise.resolve(verifyAttestation(att));
+    return verifyAttestationOnChain(att, (s: OnChainSettlementRef) =>
+      rail.verify(s as unknown as EvmSettlementRecord),
+    );
   };
 }
 
