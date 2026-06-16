@@ -9,6 +9,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { canonicalize } from "./canonical";
 import { publicKeyFromDid, secp256k1PublicKeyFromDid, suiteFromDid } from "./identity";
+import { isDidPkh, verifyPkh } from "./pkh";
 
 export const DOMAIN = {
   envelope: "aleph/0.1:envelope",
@@ -64,11 +65,31 @@ export function verifySecp256k1(
   }
 }
 
+// A signer is anything that can produce a signature over a domain-separated
+// message. This abstracts the signature suite behind the identity, so the signed-
+// object constructors accept an Ed25519 key, a secp256k1 did:key, or a did:pkh
+// account uniformly (ROADMAP D6: "abstract the suite behind the verification
+// method type").
+export interface Signer {
+  did: string;
+  sign(domain: Domain, obj: unknown): string;
+}
+
+export function isSigner(x: unknown): x is Signer {
+  return !!x && typeof (x as Signer).sign === "function";
+}
+
+// Normalize a KeyObject (Ed25519 — the common case) or a Signer into a sign fn.
+export function signWith(key: KeyObject | Signer, domain: Domain, obj: unknown): string {
+  return isSigner(key) ? key.sign(domain, obj) : signEd25519(domain, obj, key);
+}
+
 // Suite-agnostic verification: detect the signature suite from the signer's DID
-// and dispatch to the right verifier. An object signed by either an Ed25519 or
-// a secp256k1 identity verifies through this one function.
+// and dispatch to the right verifier. An object signed by an Ed25519, secp256k1
+// did:key, or did:pkh identity verifies through this one function.
 export function verifyByDid(did: string, domain: Domain, obj: unknown, sigB64: string): boolean {
   try {
+    if (isDidPkh(did)) return verifyPkh(did, domain, obj, sigB64);
     const suite = suiteFromDid(did);
     return suite === "ed25519"
       ? verifyEd25519(domain, obj, sigB64, publicKeyFromDid(did))

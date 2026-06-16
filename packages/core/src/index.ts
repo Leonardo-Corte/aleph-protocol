@@ -3,6 +3,7 @@
 // and trust (attestations + receipt chains). No servers, no fs.
 
 export * from "./identity";
+export * from "./pkh";
 export * from "./envelope";
 export * from "./grant";
 export * from "./manifest";

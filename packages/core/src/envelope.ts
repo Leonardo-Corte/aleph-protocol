@@ -5,7 +5,7 @@
 
 import { randomUUID } from "node:crypto";
 import { type Identity } from "./identity";
-import { DOMAIN, signEd25519, verifyByDid } from "./signing";
+import { DOMAIN, signWith, verifyByDid, type Signer } from "./signing";
 
 export const PROTOCOL_VERSION = "aleph/0.1";
 
@@ -24,7 +24,8 @@ export interface Envelope {
 
 export function createEnvelope(
   params: { from: string; to: string; type: EnvelopeType; body: Record<string, unknown> },
-  privateKey: Identity["privateKey"],
+  // Ed25519 key (the common case) or any Signer (secp256k1 did:key / did:pkh).
+  privateKey: Identity["privateKey"] | Signer,
 ): Envelope {
   // Build the unsigned Envelope, sign its domain-separated canonical form.
   const env: Envelope = {
@@ -36,7 +37,7 @@ export function createEnvelope(
     ts: Date.now(),
     body: params.body,
   };
-  env.sig = signEd25519(DOMAIN.envelope, env, privateKey);
+  env.sig = signWith(privateKey, DOMAIN.envelope, env);
   return env;
 }
 

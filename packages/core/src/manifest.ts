@@ -5,7 +5,7 @@
 // it is authentic and unaltered, and authored by the claimed DID).
 
 import { type Identity } from "./identity";
-import { DOMAIN, signEd25519, verifyByDid } from "./signing";
+import { DOMAIN, signEd25519, verifyByDid, isSigner, type Signer } from "./signing";
 
 // Complexity cap: a Manifest is a self-declaration, not a catalogue dump.
 export const MAX_CAPABILITIES_PER_MANIFEST = 256;
@@ -31,12 +31,17 @@ export interface Manifest {
 }
 
 // Sign a Manifest with the node's own key. The `identity` DID must match the
-// signing key (a node can only author its own Manifest).
-export function signManifest(manifest: Omit<Manifest, "sig">, identity: Identity): Manifest {
-  if (manifest.identity !== identity.did) {
+// signing key (a node can only author its own Manifest). Accepts an Ed25519
+// Identity (the common case) or any Signer (secp256k1 did:key / did:pkh node).
+export function signManifest(manifest: Omit<Manifest, "sig">, identity: Identity | Signer): Manifest {
+  const did = isSigner(identity) ? identity.did : identity.did;
+  if (manifest.identity !== did) {
     throw new Error("manifest.identity does not match the signing key");
   }
-  return { ...manifest, sig: signEd25519(DOMAIN.manifest, manifest, identity.privateKey) };
+  const sig = isSigner(identity)
+    ? identity.sign(DOMAIN.manifest, manifest)
+    : signEd25519(DOMAIN.manifest, manifest, identity.privateKey);
+  return { ...manifest, sig };
 }
 
 // Verify a Manifest's self-signature against its declared identity DID.
