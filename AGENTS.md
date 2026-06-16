@@ -109,7 +109,10 @@ contracts/                     # Foundry project (gitignored: lib/ out/ cache/)
 e2e/                           # cross-package integration + contract tests (node:test)
   test/*.test.ts                — all real tests live here (per-package test=true noop)
   fixtures/, store-contract.ts  — shared helpers
-examples/                      # runnable demos (run.ts, network.ts)
+examples/                      # runnable demos: run.ts, network.ts, flagship.ts
+                                 (resolve→rank→compose→pay→receipt chain) +
+                                 capabilities.ts (reference handlers: geocode, summarize)
+spec/vocabulary/               # curated schema-bearing capability catalog + proposal flow
 spec/
   test-vectors/jcs/             — official RFC 8785 vectors (PRETTIER-IGNORED, byte-exact)
   test-vectors/aleph/signing.json — Ed25519 signing vector
@@ -159,7 +162,7 @@ cd contracts && forge test && forge coverage --no-match-coverage 'test/|lib/' --
 python3 conformance/python/run_vectors.py
 ```
 
-Current state: **99 tests (98 pass, 1 skipped = postgres without DATABASE_URL)**,
+Current state: **105 tests (104 pass, 1 skipped = postgres without DATABASE_URL)**,
 all gates green. Coverage thresholds: lines/stmts 88, funcs 75, branches 68
 (functions lowered because the Postgres/EVM drivers are CI-only).
 
@@ -231,7 +234,9 @@ w/ env-validated config + /healthz, GHCR release + additive-migration rollback,
 CI secret scan, docs/operators guide — DECISIONS D12). Closes Milestone M3. · **S10
 (SDKs & DX: TS reference publish-ready via changesets/TypeDoc, vector-locked Python
 SDK + cross-language interop test, create-aleph-node scaffolder, quickstart —
-DECISIONS D13).**
+DECISIONS D13). · **S11 (capability nodes: schema-bearing vocabulary catalog +
+proposal flow, deterministic reference nodes geocode/summarize + a priced one,
+flagship resolve→rank→compose→pay→receipt-chain demo — DECISIONS D14).**
 
 **Deferred (tracked):** `did:pkh` (eip155 recovery) → chain tooling, and it now
 also gates binding on-chain settlement *addresses* to attesting *DIDs* (S5.3);
@@ -241,14 +246,16 @@ contract audit + bug bounty** → owner's manual gate to MAINNET (D10, ROADMAP �
 **cloud platform + real HTTPS domain + CD auto-deploy + rollback drill** → owner's
 manual step (image/compose/config/migrations/rollback all ready; D12, ROADMAP §9);
 **npm + PyPI publish + docs-site-at-domain + live testnet** → owner's manual step
-(packages publish-ready, Python pkg + scaffolder + quickstart ready; D13, ROADMAP §10).
+(packages publish-ready, Python pkg + scaffolder + quickstart ready; D13, ROADMAP §10);
+**capabilities live on a public testnet + recorded MCP launch demo** → owner's deploy
+step (5 schema'd caps + reference/priced nodes + flagship demo all run+tested; D14, §11).
 
-**NEXT — Section 11: Real capability nodes & the vocabulary.** Per ROADMAP §11:
-expand SEED_VOCABULARY into a curated set (JSON Schemas + risk defaults), build a
-few genuinely useful reference nodes (e.g. data.geocode, compute.inference,
-text.summarize, a priced node), and a flagship MCP-drivable demo (resolve → rank
-by trust → compose → pay on testnet → verifiable receipt chain). (S0–S10 done;
-M1–M3 closed, M4 in progress.)
+**NEXT — Section 12: Protocol governance & the v1 spec freeze.** Per ROADMAP §12:
+audit the manifest spec ↔ code in lockstep (every MUST has a test), publish the
+conformance test-suite + vectors (reproduced by the Python SDK), formalize the
+AIP process (`spec/aips/`: Draft→Review→Accepted→Final; waist-vs-layer rule +
+versioning), and freeze the Envelope/Manifest/Grant wire format at **v1.0**.
+(S0–S11 done; M1–M3 closed, M4 in progress — §12 completes the launch track.)
 
 ---
 

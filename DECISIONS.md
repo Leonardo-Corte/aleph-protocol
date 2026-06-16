@@ -381,6 +381,38 @@ guard against the reference quietly *becoming* the spec.
 
 ---
 
+## D14 — Capability nodes: a schema-bearing catalog + small, verifiable reference nodes
+
+**Decision.**
+
+- **The vocabulary is governed and schema-bearing.** `spec/vocabulary/catalog.json`
+  is the curated set — each key carries a description, risk default, reversibility,
+  and an input/output **JSON Schema** — so two nodes offering the same key really
+  match (schema by identity, not prose). New keys arrive by an **AIP-style PR**
+  (schema + rationale; `proposed → stable`), documented in `spec/vocabulary/README.md`.
+- **Reference nodes are small, deterministic, and verifiable** (`data.geocode`
+  via a built-in gazetteer; `text.summarize` via extractive scoring). They
+  exercise the protocol end to end with **no external services**; a real
+  deployment swaps the handler body for a provider/LLM while the schema stays the
+  contract. A **priced** reference node settles via the rail and accrues real
+  reputation — PAY + TRUST proven end to end.
+- **The flagship demo is a composition, not a product.** An agent FINDs several
+  nodes, RANKS by trust, COMPOSES two, PAYs each, and ends with a verifiable
+  RECEIPT CHAIN (`examples/src/flagship.ts`, tested e2e). `compute.inference` /
+  `data.fetch` are catalogued but kept gated/deferred (content-safety, cost,
+  network egress) — the risk the ROADMAP flags.
+- **Owner's gate:** ≥4 capabilities *live on a public testnet*, a priced node
+  accruing *testnet-backed* reputation, and the *recorded* MCP launch demo are
+  the deploy steps — the capabilities, the priced flow, and the composition all
+  run and are tested locally; pointing them at a deployed network is mechanical.
+
+**Why.** A network whose only capability is `math.add` proves the protocol but
+gives no one a reason to use it. Useful-but-tiny nodes + a shared schema'd
+vocabulary + a story-telling composition are what turn the protocol into a
+network — without scope-creeping into building products.
+
+---
+
 ## Change log
 
 - 2026-06-14 — D1–D4 decided (initial record).
@@ -408,3 +440,6 @@ guard against the reference quietly *becoming* the spec.
 - 2026-06-16 — D13 decided (SDKs & DX: TS reference + changesets/TypeDoc, a
   vector-locked Python SDK + cross-language interop, create-aleph-node scaffolder,
   quickstart; npm/PyPI publish + docs site as owner's gate; ROADMAP §10).
+- 2026-06-16 — D14 decided (capability nodes: schema-bearing vocabulary catalog +
+  proposal flow, small/deterministic reference nodes incl. a priced one, flagship
+  composition demo; live-testnet + recorded launch demo as owner's gate; §11).

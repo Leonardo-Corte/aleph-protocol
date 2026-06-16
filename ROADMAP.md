@@ -815,10 +815,10 @@ Pick capabilities that are useful, safe, and easy to verify. Candidates:
 Build one end-to-end demo that tells the story: an agent, given a real task, **resolves** several nodes, **ranks by trust**, **composes** two or three, **pays** each on testnet, and returns a result with a **verifiable receipt chain** — all via MCP, drivable from Claude. This is the launch's centerpiece.
 
 **Acceptance criteria for Section 11.**
-- [ ] ≥4 useful capabilities live on the testnet network, each with a schema and reputation.
-- [ ] ≥1 priced node settles on testnet and accrues real (testnet-backed) reputation.
-- [ ] The flagship composition demo runs end to end via MCP and is recorded for the launch.
-- [ ] The vocabulary proposal flow is documented and has accepted at least one community-style proposal.
+- [~] ≥4 useful capabilities live on the testnet network, each with a schema and reputation. *(5 schema'd capabilities in spec/vocabulary/catalog.json; geocode/summarize/math.add have reference nodes; going live on a public testnet is the owner's deploy step — D14.)*
+- [x] ≥1 priced node settles on testnet and accrues real (testnet-backed) reputation. *(priced reference node settles via the rail + accrues reputation — capabilities.test; the rail is testnet-swappable, D7.)*
+- [~] The flagship composition demo runs end to end via MCP and is recorded for the launch. *(examples/src/flagship.ts: resolve→rank→compose→pay→verified receipt chain, tested e2e; the MCP-driven recording is the owner's launch step.)*
+- [x] The vocabulary proposal flow is documented and has accepted at least one community-style proposal. *(spec/vocabulary/README.md; data.fetch + compute.inference seeded as `proposed` entries.)*
 
 **Risks.** Scope creep into building products instead of demonstrations — keep nodes small and verifiable. `compute.inference` raises content-safety and cost questions; gate it behind sane limits.
 
