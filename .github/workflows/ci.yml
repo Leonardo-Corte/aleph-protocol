@@ -164,6 +164,10 @@ jobs:
           mkdir -p "$HOME/.foundry/bin"
           if [ ! -e "$HOME/.foundry/bin/anvil" ]; then ln -s "$(which anvil)" "$HOME/.foundry/bin/anvil"; fi
           node --test "e2e/test/settle-evm.test.ts"
+      # The agent path moving REAL value: client.invoke/compose pay a TS node
+      # on-chain via the EVM rail (the in-memory and EVM rails share one seam).
+      - name: On-chain PAY through the agent (anvil)
+        run: node --test "e2e/test/settle-evm-agent.test.ts"
 
   secret-scan:
     name: secret scan

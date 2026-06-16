@@ -20,6 +20,7 @@ export interface Step {
   pick: (result: unknown) => unknown;
   grant?: Grant;
   payEur?: number;
+  payeeAddress?: string; // on-chain payout address (EVM rail), from the node's Manifest
 }
 
 export interface Composition {
@@ -30,9 +31,11 @@ export interface Composition {
 
 // Run the steps in order, threading a carry value through and chaining each
 // receipt to the previous one. The returned chain is independently auditable.
-export async function compose(opts: {
+// Generic over the rail's settlement-record type, so it composes paid steps over
+// the in-memory rail OR the on-chain EVM rail unchanged.
+export async function compose<S = unknown>(opts: {
   agent: Identity;
-  rail?: PayerRail;
+  rail?: PayerRail<S>;
   initial: unknown;
   steps: Step[];
 }): Promise<Composition> {
@@ -41,7 +44,7 @@ export async function compose(opts: {
   let prev: string[] | undefined;
 
   for (const step of opts.steps) {
-    const { result, outcome, receipt } = await invoke({
+    const { result, outcome, receipt } = await invoke<S>({
       nodeDid: step.nodeDid,
       endpoint: step.endpoint,
       capability: step.capability,
@@ -50,6 +53,7 @@ export async function compose(opts: {
       agent: opts.agent,
       rail: opts.rail,
       payEur: step.payEur,
+      payeeAddress: step.payeeAddress,
       prev,
     });
     if (outcome !== "success") {

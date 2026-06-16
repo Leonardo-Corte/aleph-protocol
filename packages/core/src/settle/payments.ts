@@ -25,16 +25,24 @@ export interface LockParams {
   payee: string; // the node's DID
   amount: number;
   invokeRef: string; // binds the escrow to this invocation
+  // On-chain payout address (from the node's signed Manifest). The reference
+  // rail ignores it; the EVM rail locks to it. Binding it to the payee DID is
+  // did:pkh territory (deferred); until then the node's Manifest asserts it.
+  payeeAddress?: string;
 }
 
 export type LockResult = { ok: true; ref: EscrowRef } | { ok: false; reason: string };
 
-// Agent side: lock funds, then settle once the receipt is verified.
-export interface PayerRail {
+// Agent side: lock funds, then settle once the receipt is verified. Generic over
+// the settlement-record type `S` because each rail proves settlement its own way
+// (the reference rail signs a SettlementRecord; the EVM rail returns an on-chain
+// record proven by its txHash). The agent produces this record with its OWN rail,
+// so it is authentic by construction — no re-verification needed.
+export interface PayerRail<S = SettlementRecord> {
   readonly id: string;
   lockEscrow(p: LockParams): Promise<LockResult>;
-  releaseEscrow(ref: EscrowRef): Promise<SettlementRecord>;
-  refundEscrow(ref: EscrowRef): Promise<SettlementRecord>;
+  releaseEscrow(ref: EscrowRef): Promise<S>;
+  refundEscrow(ref: EscrowRef): Promise<S>;
 }
 
 // Node side: verify a lock matches the expected terms. The node cannot release
